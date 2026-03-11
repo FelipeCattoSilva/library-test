@@ -455,7 +455,8 @@ function Library:NewWindow(hubName, gameName, version, discord)
         -- Just display in features
     end
 
-    -- Close Button (Extra)
+    -- Close Button REMOVED by user request
+    --[[
     local CloseBtn = Instance.new("TextButton")
     CloseBtn.Parent = TopBar
     CloseBtn.BackgroundTransparency = 1
@@ -469,6 +470,11 @@ function Library:NewWindow(hubName, gameName, version, discord)
     CloseBtn.MouseButton1Click:Connect(function()
         ScreenGui:Destroy()
     end)
+    ]]
+
+    function WindowObj:ToggleUI()
+        ScreenGui.Enabled = not ScreenGui.Enabled
+    end
 
     return WindowObj
 end
