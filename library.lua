@@ -16,9 +16,9 @@ if gethui then Parent = gethui() end
 
 function Library:NewWindow(hubName, gameName, version, discord)
     hubName = hubName or "Jael Library"
-    gameName = gameName or "Game"
+    gameName = gameName or "Baseplate"
     version = version or "v1.0"
-    discord = discord or "discord.gg/..."
+    discord = discord or "discord/00000"
 
     -- Cleanup
     for _, v in pairs(Parent:GetChildren()) do
@@ -39,7 +39,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
     MainFrame.BorderSizePixel = 0
     MainFrame.Position = UDim2.new(0.5, -341, 0.5, -232)
     MainFrame.Size = UDim2.new(0, 683, 0, 464)
-    MainFrame.ClipsDescendants = false -- Allow shadow/glow if added
+    MainFrame.ClipsDescendants = false
 
     -- Dragging Logic
     local Dragging, DragInput, DragStart, StartPos
@@ -89,7 +89,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
     local GameLabel = Instance.new("TextLabel")
     GameLabel.Parent = SideBar
     GameLabel.BackgroundTransparency = 1
-    GameLabel.Position = UDim2.new(0, 15, 0, 40)
+    GameLabel.Position = UDim2.new(0, 15, 0, 45)
     GameLabel.Size = UDim2.new(0, 150, 0, 20)
     GameLabel.Font = Enum.Font.Gotham
     GameLabel.Text = gameName
@@ -524,6 +524,73 @@ function Library:NewWindow(hubName, gameName, version, discord)
             Line.BorderSizePixel = 0
             Line.Position = UDim2.new(0, 0, 0.5, 0)
             Line.Size = UDim2.new(1, 0, 0, 2)
+        end
+
+        function TabObj:NewKeybind(label, key, callback)
+            key = key or "None"
+            label = label or "New Keybind"
+            callback = callback or function() end
+            local listening = false
+
+            local BindFrame = Instance.new("Frame")
+            BindFrame.Parent = TabFrame
+            BindFrame.BackgroundTransparency = 1
+            BindFrame.Size = UDim2.new(1, -20, 0, 40)
+
+            local Bg = Instance.new("Frame")
+            Bg.Parent = BindFrame
+            Bg.BackgroundColor3 = Color3.fromRGB(41, 41, 41)
+            Bg.BorderSizePixel = 0
+            Bg.Size = UDim2.new(1, 0, 0, 35)
+
+            local Label = Instance.new("TextLabel")
+            Label.Parent = Bg
+            Label.BackgroundTransparency = 1
+            Label.Position = UDim2.new(0, 10, 0, 0)
+            Label.Size = UDim2.new(1, -90, 1, 0)
+            Label.Font = Enum.Font.Gotham
+            Label.Text = label
+            Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+            Label.TextSize = 14
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+
+            local KeyBtn = Instance.new("TextButton")
+            KeyBtn.Parent = Bg
+            KeyBtn.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+            KeyBtn.BorderSizePixel = 0
+            KeyBtn.Position = UDim2.new(1, -80, 0.5, -10)
+            KeyBtn.Size = UDim2.new(0, 70, 0, 20)
+            KeyBtn.Font = Enum.Font.Gotham
+            KeyBtn.Text = key
+            KeyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            KeyBtn.TextSize = 12
+            KeyBtn.AutoButtonColor = false
+
+            KeyBtn.MouseButton1Click:Connect(function()
+                listening = true
+                KeyBtn.Text = "..."
+                KeyBtn.BackgroundColor3 = Color3.fromRGB(102, 5, 172)
+            end)
+
+            UserInputService.InputBegan:Connect(function(input)
+                if listening then
+                    if input.UserInputType == Enum.UserInputType.Keyboard then
+                        key = input.KeyCode.Name
+                        KeyBtn.Text = key
+                        listening = false
+                        KeyBtn.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+                        callback(key)
+                    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        key = "Mouse1"
+                        KeyBtn.Text = key
+                        listening = false
+                        KeyBtn.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+                        callback(key)
+                    end
+                elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode.Name == key then
+                    callback(key)
+                end
+            end)
         end
 
         return TabObj
