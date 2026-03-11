@@ -57,6 +57,19 @@ local function GetXY(GuiObject)
 	return Px/Max, Py/May
 end
 
+function Library:ToggleUI()
+	local Parent = CoreGui
+	if gethui then
+		Parent = gethui()
+	elseif syn and syn.protect_gui then 
+		syn.protect_gui(Parent)
+	end
+	
+	if Parent:FindFirstChild("Jael Library") then
+		Parent["Jael Library"].Enabled = not Parent["Jael Library"].Enabled
+	end
+end
+
 function Library:NewWindow(hubName, gameName, version, discord)
 	
 	-- Safe Parent
