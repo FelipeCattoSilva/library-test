@@ -870,28 +870,36 @@ function Library:NewWindow(hubName, gameName, version, discord)
 			callback = callback or function() end
 			local Keybind = {}
 
-			-- bindType: "Keyboard" or "Mouse"
-			-- bindKey:  Enum.KeyCode        (used when bindType == "Keyboard")
-			-- bindMouseType: Enum.UserInputType (used when bindType == "Mouse")
-			local bindType, bindKey, bindMouseType
+			-- bindType:      "Keyboard" or "Mouse"
+			-- bindKey:       Enum.KeyCode  (Keyboard)
+			-- bindMouseName: string name of UserInputType (Mouse) — stored as string
+			--                so MB4/MB5 (non-standard enums) compare correctly
+			local bindType, bindKey, bindMouseName
 
-			local mouseButtonNames = {
-				[Enum.UserInputType.MouseButton1] = "MB1",
-				[Enum.UserInputType.MouseButton2] = "MB2",
-				[Enum.UserInputType.MouseButton3] = "MB3",
+			local friendlyNames = {
+				MouseButton1 = "MB1", MouseButton2 = "MB2", MouseButton3 = "MB3",
+				MouseButton4 = "MB4", MouseButton5 = "MB5",
 			}
 
-			-- Accept either a KeyCode or a UserInputType as the default bind
+			local function getMouseName(inputType)
+				local ok, name = pcall(function() return inputType.Name end)
+				return ok and name or nil
+			end
+
+			-- Accept KeyCode or UserInputType as default
 			if typeof(key) == "EnumItem" then
 				if key.EnumType == Enum.KeyCode then
 					bindType = "Keyboard"
 					bindKey  = key
-				elseif key.EnumType == Enum.UserInputType and mouseButtonNames[key] then
-					bindType      = "Mouse"
-					bindMouseType = key
 				else
-					bindType = "Keyboard"
-					bindKey  = Enum.KeyCode.Unknown
+					local n = getMouseName(key)
+					if n and n:find("MouseButton") then
+						bindType      = "Mouse"
+						bindMouseName = n
+					else
+						bindType = "Keyboard"
+						bindKey  = Enum.KeyCode.Unknown
+					end
 				end
 			else
 				bindType = "Keyboard"
@@ -902,7 +910,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				if bindType == nil then
 					return "None"
 				elseif bindType == "Mouse" then
-					return mouseButtonNames[bindMouseType] or bindMouseType.Name
+					return friendlyNames[bindMouseName] or bindMouseName
 				else
 					return bindKey.Name
 				end
@@ -953,16 +961,18 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					conn:Disconnect()
 
 					if input == nil then
-						-- Timeout: clear bind
 						bindType      = nil
 						bindKey       = nil
-						bindMouseType = nil
+						bindMouseName = nil
 					elseif input.UserInputType == Enum.UserInputType.Keyboard then
 						bindType = "Keyboard"
 						bindKey  = input.KeyCode
-					elseif pcall(function() return input.UserInputType.Name:find("MouseButton") end) and input.UserInputType.Name:find("MouseButton") then
-						bindType      = "Mouse"
-						bindMouseType = input.UserInputType
+					else
+						local n = getMouseName(input.UserInputType)
+						if n and n:find("MouseButton") then
+							bindType      = "Mouse"
+							bindMouseName = n
+						end
 					end
 					KeyButton.Text = currentBindName()
 				end
@@ -973,12 +983,15 @@ function Library:NewWindow(hubName, gameName, version, discord)
 
 			UserInputService.InputBegan:Connect(function(input, gameProcessed)
 				if gameProcessed then return end
-				if bindType == "Keyboard" and input.UserInputType == Enum.UserInputType.Keyboard then
-					if input.KeyCode == bindKey then
-						callback(bindKey)
+				if bindType == "Keyboard" then
+					if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then
+						callback()
 					end
-				elseif bindType == "Mouse" and input.UserInputType == bindMouseType then
-					callback(bindMouseType)
+				elseif bindType == "Mouse" then
+					local n = getMouseName(input.UserInputType)
+					if n and n == bindMouseName then
+						callback()
+					end
 				end
 			end)
 
