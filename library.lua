@@ -866,10 +866,49 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		end
 
 		function Tab:NewKeybind(label, key, callback)
-			key = key or Enum.KeyCode.Unknown
 			label = label or "New Keybind"
 			callback = callback or function() end
 			local Keybind = {}
+
+			-- bindType: "Keyboard" or "Mouse"
+			-- bindKey:  Enum.KeyCode        (used when bindType == "Keyboard")
+			-- bindMouseType: Enum.UserInputType (used when bindType == "Mouse")
+			local bindType, bindKey, bindMouseType
+
+			local mouseButtonNames = {
+				[Enum.UserInputType.MouseButton1] = "MB1",
+				[Enum.UserInputType.MouseButton2] = "MB2",
+				[Enum.UserInputType.MouseButton3] = "MB3",
+				[Enum.UserInputType.MouseButton4] = "MB4",
+				[Enum.UserInputType.MouseButton5] = "MB5",
+			}
+
+			-- Accept either a KeyCode or a UserInputType as the default bind
+			if typeof(key) == "EnumItem" then
+				if key.EnumType == Enum.KeyCode then
+					bindType = "Keyboard"
+					bindKey  = key
+				elseif key.EnumType == Enum.UserInputType and mouseButtonNames[key] then
+					bindType      = "Mouse"
+					bindMouseType = key
+				else
+					bindType = "Keyboard"
+					bindKey  = Enum.KeyCode.Unknown
+				end
+			else
+				bindType = "Keyboard"
+				bindKey  = Enum.KeyCode.Unknown
+			end
+
+			local function currentBindName()
+				if bindType == nil then
+					return "None"
+				elseif bindType == "Mouse" then
+					return mouseButtonNames[bindMouseType] or bindMouseType.Name
+				else
+					return bindKey.Name
+				end
+			end
 
 			local KeybindFrame = Instance.new("Frame")
 			KeybindFrame.Parent = TabScrolling
@@ -897,28 +936,51 @@ function Library:NewWindow(hubName, gameName, version, discord)
 			KeyButton.Position = UDim2.new(0.824, 0, 0.24, 0)
 			KeyButton.Size = UDim2.new(0, 76, 0, 26)
 			KeyButton.Font = Enum.Font.Gotham
-			KeyButton.Text = key.Name
+			KeyButton.Text = currentBindName()
 			KeyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 			KeyButton.TextSize = 14
-			
+
 			local KeyButtonCorner = Instance.new("UICorner")
 			KeyButtonCorner.CornerRadius = UDim.new(0, 5)
 			KeyButtonCorner.Parent = KeyButton
 
 			KeyButton.MouseButton1Click:Connect(function()
 				KeyButton.Text = "..."
-				local input = UserInputService.InputBegan:Wait()
-				if input.UserInputType == Enum.UserInputType.Keyboard then
-					key = input.KeyCode
-					KeyButton.Text = key.Name
-				else
-					KeyButton.Text = key.Name
+				local done = false
+				local conn
+
+				local function finish(input)
+					if done then return end
+					done = true
+					conn:Disconnect()
+
+					if input == nil then
+						-- Timeout: clear bind
+						bindType      = nil
+						bindKey       = nil
+						bindMouseType = nil
+					elseif input.UserInputType == Enum.UserInputType.Keyboard then
+						bindType = "Keyboard"
+						bindKey  = input.KeyCode
+					elseif mouseButtonNames[input.UserInputType] then
+						bindType      = "Mouse"
+						bindMouseType = input.UserInputType
+					end
+					KeyButton.Text = currentBindName()
 				end
+
+				conn = UserInputService.InputBegan:Connect(finish)
+				task.delay(1.5, function() finish(nil) end)
 			end)
 
 			UserInputService.InputBegan:Connect(function(input, gameProcessed)
-				if not gameProcessed and input.KeyCode == key then
-					callback(key)
+				if gameProcessed then return end
+				if bindType == "Keyboard" and input.UserInputType == Enum.UserInputType.Keyboard then
+					if input.KeyCode == bindKey then
+						callback(bindKey)
+					end
+				elseif bindType == "Mouse" and input.UserInputType == bindMouseType then
+					callback(bindMouseType)
 				end
 			end)
 
