@@ -879,8 +879,6 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				[Enum.UserInputType.MouseButton1] = "MB1",
 				[Enum.UserInputType.MouseButton2] = "MB2",
 				[Enum.UserInputType.MouseButton3] = "MB3",
-				[Enum.UserInputType.MouseButton4] = "MB4",
-				[Enum.UserInputType.MouseButton5] = "MB5",
 			}
 
 			-- Accept either a KeyCode or a UserInputType as the default bind
