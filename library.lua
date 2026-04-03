@@ -960,7 +960,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					elseif input.UserInputType == Enum.UserInputType.Keyboard then
 						bindType = "Keyboard"
 						bindKey  = input.KeyCode
-					elseif mouseButtonNames[input.UserInputType] then
+					elseif pcall(function() return input.UserInputType.Name:find("MouseButton") end) and input.UserInputType.Name:find("MouseButton") then
 						bindType      = "Mouse"
 						bindMouseType = input.UserInputType
 					end
