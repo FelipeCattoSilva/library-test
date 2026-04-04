@@ -831,11 +831,20 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				local self = {Instance = Frame}
 				function self:SetKey(keyCode)
 					if typeof(keyCode) == "EnumItem" and keyCode.EnumType == Enum.KeyCode then
-						bindType = "Keyboard"; bindKey = keyCode; KBtn.Text = keyCode.Name
+						bindType = "Keyboard"; bindKey = keyCode; bindMouseName = nil; KBtn.Text = keyCode.Name
+					end
+				end
+				function self:SetMouseBind(mouseName)
+					if type(mouseName) == "string" and mouseName:find("MouseButton") then
+						bindType = "Mouse"; bindMouseName = mouseName; bindKey = nil
+						KBtn.Text = friendlyNames[mouseName] or mouseName
 					end
 				end
 				function self:GetKey()
 					return bindType == "Keyboard" and bindKey or nil
+				end
+				function self:GetBindInfo()
+					return {type = bindType, key = bindKey, mouseName = bindMouseName}
 				end
 				return self
 			end
