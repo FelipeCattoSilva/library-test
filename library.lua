@@ -828,7 +828,16 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					if bindType == "Keyboard" and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then callback()
 					elseif bindType == "Mouse" then local n = getMouseName(input.UserInputType); if n and n == bindMouseName then callback() end end
 				end)
-				return {Instance = Frame}
+				local self = {Instance = Frame}
+				function self:SetKey(keyCode)
+					if typeof(keyCode) == "EnumItem" and keyCode.EnumType == Enum.KeyCode then
+						bindType = "Keyboard"; bindKey = keyCode; KBtn.Text = keyCode.Name
+					end
+				end
+				function self:GetKey()
+					return bindType == "Keyboard" and bindKey or nil
+				end
+				return self
 			end
 
 			-- ── NewInput ──────────────────────────────────────────────────
