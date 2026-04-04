@@ -629,16 +629,25 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				Ind.Parent = TogBg; Ind.BackgroundColor3 = Color3.fromRGB(255, 81, 81)
 				Ind.Position = UDim2.new(0, 24, 0.1, 0); Ind.Size = UDim2.new(0, 16, 0.8, 0)
 				mkCorner(3, Ind)
-				TogBtn.MouseButton1Click:Connect(function()
-					State = not State
-					if State then
+				local function ApplyToggleVisual(s)
+					if s then
 						TweenService:Create(Ind, TweenInfo.new(0.2), {Position = UDim2.new(0, 4, 0.1, 0), BackgroundColor3 = Color3.fromRGB(2, 255, 108)}):Play()
 					else
 						TweenService:Create(Ind, TweenInfo.new(0.2), {Position = UDim2.new(0, 24, 0.1, 0), BackgroundColor3 = Color3.fromRGB(255, 81, 81)}):Play()
 					end
+				end
+				TogBtn.MouseButton1Click:Connect(function()
+					State = not State
+					ApplyToggleVisual(State)
 					callback(State)
 				end)
-				return {Instance = Frame}
+				local self = {Instance = Frame}
+				function self:SetState(s)
+					State = s
+					ApplyToggleVisual(State)
+					callback(State)
+				end
+				return self
 			end
 
 			-- ── NewSlider ─────────────────────────────────────────────────
@@ -683,7 +692,15 @@ function Library:NewWindow(hubName, gameName, version, discord)
 						end
 					end)
 				end)
-				return {Instance = Frame}
+				local self = {Instance = Frame}
+				function self:SetValue(val)
+					val = math.clamp(math.floor(val), min, max)
+					local pct = (val - min) / (max - min)
+					Fill.Size = UDim2.new(pct, 0, 1, 0)
+					ValLbl.Text = tostring(val)
+					callback(val)
+				end
+				return self
 			end
 
 			-- ── NewDropdown ───────────────────────────────────────────────
@@ -726,21 +743,37 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					ItemsFrame.Visible = Opened
 				end
 				Arrow.MouseButton1Click:Connect(ToggleDrop)
-				for _, item in pairs(items) do
-					local IF = Instance.new("Frame")
-					IF.Parent = ItemsFrame; IF.BackgroundColor3 = Color3.fromRGB(41, 41, 41)
-					IF.Size = UDim2.new(1, 0, 0, 28); mkCorner(4, IF)
-					mkStroke(Color3.fromRGB(102, 5, 172), 1, IF)
-					local IB = Instance.new("TextButton")
-					IB.Parent = IF; IB.BackgroundTransparency = 1
-					IB.Size = UDim2.new(1, 0, 1, 0)
-					IB.Font = Enum.Font.Gotham; IB.Text = tostring(item)
-					IB.TextColor3 = Color3.fromRGB(255, 255, 255); IB.TextSize = 12
-					IB.MouseButton1Click:Connect(function()
-						SelLbl.Text = tostring(item); ToggleDrop(); callback(item)
-					end)
+				local function BuildItems()
+					for _, child in pairs(ItemsFrame:GetChildren()) do
+						if child:IsA("Frame") then child:Destroy() end
+					end
+					for _, item in pairs(items) do
+						local IF = Instance.new("Frame")
+						IF.Parent = ItemsFrame; IF.BackgroundColor3 = Color3.fromRGB(41, 41, 41)
+						IF.Size = UDim2.new(1, 0, 0, 28); mkCorner(4, IF)
+						mkStroke(Color3.fromRGB(102, 5, 172), 1, IF)
+						local IB = Instance.new("TextButton")
+						IB.Parent = IF; IB.BackgroundTransparency = 1
+						IB.Size = UDim2.new(1, 0, 1, 0)
+						IB.Font = Enum.Font.Gotham; IB.Text = tostring(item)
+						IB.TextColor3 = Color3.fromRGB(255, 255, 255); IB.TextSize = 12
+						IB.MouseButton1Click:Connect(function()
+							SelLbl.Text = tostring(item); ToggleDrop(); callback(item)
+						end)
+					end
 				end
-				return {Instance = Frame}
+				BuildItems()
+				local self = {Instance = Frame}
+				function self:UpdateItems(newItems)
+					items = newItems or {}
+					if Opened then ToggleDrop() end
+					BuildItems()
+					SelLbl.Text = "None"
+				end
+				function self:SetSelected(item)
+					SelLbl.Text = item ~= nil and tostring(item) or "None"
+				end
+				return self
 			end
 
 			-- ── NewKeybind ────────────────────────────────────────────────
@@ -796,6 +829,41 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					elseif bindType == "Mouse" then local n = getMouseName(input.UserInputType); if n and n == bindMouseName then callback() end end
 				end)
 				return {Instance = Frame}
+			end
+
+			-- ── NewInput ──────────────────────────────────────────────────
+			function Section:NewInput(text, placeholder, callback)
+				text = text or "Input"; placeholder = placeholder or "..."; callback = callback or function() end
+				local Frame = Instance.new("Frame")
+				Frame.Parent = Content; Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+				Frame.Size = UDim2.new(1, 0, 0, 34); mkCorner(4, Frame)
+				local Lbl = Instance.new("TextLabel")
+				Lbl.Parent = Frame; Lbl.BackgroundTransparency = 1
+				Lbl.Position = UDim2.new(0, 8, 0, 0); Lbl.Size = UDim2.new(0.44, 0, 1, 0)
+				Lbl.Font = Enum.Font.Gotham; Lbl.Text = text
+				Lbl.TextColor3 = Color3.fromRGB(255, 255, 255); Lbl.TextSize = 12
+				Lbl.TextXAlignment = Enum.TextXAlignment.Left
+				local Box = Instance.new("TextBox")
+				Box.Parent = Frame
+				Box.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
+				Box.Position = UDim2.new(0.44, 4, 0.5, -11); Box.Size = UDim2.new(0.56, -12, 0, 22)
+				Box.Font = Enum.Font.Gotham; Box.Text = ""
+				Box.PlaceholderText = placeholder
+				Box.TextColor3 = Color3.fromRGB(255, 255, 255)
+				Box.PlaceholderColor3 = Color3.fromRGB(110, 110, 110)
+				Box.TextSize = 11; Box.ClearTextOnFocus = false
+				mkCorner(4, Box)
+				mkStroke(Color3.fromRGB(102, 5, 172), 0, Box)
+				local Stroke = Box:FindFirstChildOfClass("UIStroke")
+				Box.Focused:Connect(function() if Stroke then Stroke.Thickness = 1 end end)
+				Box.FocusLost:Connect(function(enter)
+					if Stroke then Stroke.Thickness = 0 end
+					callback(Box.Text, enter)
+				end)
+				local self = {Instance = Frame}
+				function self:GetValue() return Box.Text end
+				function self:SetValue(v) Box.Text = tostring(v or "") end
+				return self
 			end
 
 			-- ── NewBar ────────────────────────────────────────────────────
