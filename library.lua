@@ -935,12 +935,165 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				return self
 			end
 
+			-- ── NewColorPicker ────────────────────────────────────────────
+			function Section:NewColorPicker(text, default, callback)
+				text = text or "Color"; callback = callback or function() end
+				default = default or Color3.fromRGB(255, 255, 255)
+				local h, s, v = default:ToHSV()
+				local Opened = false
+
+				local Frame = Instance.new("Frame")
+				Frame.Parent = Content; Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+				Frame.Size = UDim2.new(1, 0, 0, 34); Frame.ClipsDescendants = true; mkCorner(4, Frame)
+
+				local Lbl = Instance.new("TextLabel")
+				Lbl.Parent = Frame; Lbl.BackgroundTransparency = 1
+				Lbl.Position = UDim2.new(0, 8, 0, 0); Lbl.Size = UDim2.new(1, -50, 0, 34)
+				Lbl.Font = Enum.Font.Gotham; Lbl.Text = text
+				Lbl.TextColor3 = Color3.fromRGB(255, 255, 255); Lbl.TextSize = 12
+				Lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+				-- Swatch (click to open)
+				local Swatch = Instance.new("TextButton")
+				Swatch.Parent = Frame; Swatch.Text = ""
+				Swatch.Position = UDim2.new(1, -38, 0.5, -9); Swatch.Size = UDim2.new(0, 30, 0, 18)
+				Swatch.BackgroundColor3 = default; mkCorner(4, Swatch)
+				mkStroke(Color3.fromRGB(80, 80, 80), 1, Swatch)
+
+				-- SV square
+				local SV = Instance.new("ImageLabel")
+				SV.Parent = Frame; SV.Position = UDim2.new(0, 8, 0, 40)
+				SV.Size = UDim2.new(1, -16, 0, 90)
+				SV.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+				SV.Image = "rbxassetid://4155801252" -- white->transparent gradient (sat)
+				SV.BorderSizePixel = 0; mkCorner(4, SV)
+				local SVdark = Instance.new("ImageLabel")
+				SVdark.Parent = SV; SVdark.BackgroundTransparency = 1
+				SVdark.Size = UDim2.new(1, 0, 1, 0)
+				SVdark.Image = "rbxassetid://3641079629" -- black gradient (value)
+				mkCorner(4, SVdark)
+				local SVcursor = Instance.new("Frame")
+				SVcursor.Parent = SV; SVcursor.Size = UDim2.new(0, 6, 0, 6)
+				SVcursor.AnchorPoint = Vector2.new(0.5, 0.5)
+				SVcursor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				mkStroke(Color3.fromRGB(0, 0, 0), 1, SVcursor)
+				SVcursor.Position = UDim2.new(s, 0, 1 - v, 0)
+				local cpc = Instance.new("UICorner"); cpc.CornerRadius = UDim.new(1, 0); cpc.Parent = SVcursor
+
+				-- Hue slider
+				local Hue = Instance.new("Frame")
+				Hue.Parent = Frame; Hue.Position = UDim2.new(0, 8, 0, 136)
+				Hue.Size = UDim2.new(1, -16, 0, 12); Hue.BorderSizePixel = 0; mkCorner(4, Hue)
+				local HueGrad = Instance.new("UIGradient")
+				HueGrad.Parent = Hue
+				HueGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
+					ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
+					ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
+					ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
+					ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
+					ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
+					ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0)),
+				})
+				local HueCursor = Instance.new("Frame")
+				HueCursor.Parent = Hue; HueCursor.Size = UDim2.new(0, 3, 1, 2)
+				HueCursor.AnchorPoint = Vector2.new(0.5, 0.5)
+				HueCursor.Position = UDim2.new(h, 0, 0.5, 0)
+				HueCursor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				HueCursor.BorderSizePixel = 0; mkStroke(Color3.fromRGB(0, 0, 0), 1, HueCursor)
+
+				local function fireColor()
+					local col = Color3.fromHSV(h, s, v)
+					Swatch.BackgroundColor3 = col
+					SV.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+					SVcursor.Position = UDim2.new(s, 0, 1 - v, 0)
+					HueCursor.Position = UDim2.new(h, 0, 0.5, 0)
+					callback(col)
+				end
+
+				-- SV drag
+				local SVbtn = Instance.new("TextButton")
+				SVbtn.Parent = SV; SVbtn.BackgroundTransparency = 1
+				SVbtn.Size = UDim2.new(1, 0, 1, 0); SVbtn.Text = ""
+				SVbtn.MouseButton1Down:Connect(function()
+					local mm, mk
+					local function stepSV()
+						local px, py = GetXY(SV)
+						s = px; v = 1 - py; fireColor()
+					end
+					stepSV()
+					mm = Mouse.Move:Connect(stepSV)
+					mk = UserInputService.InputEnded:Connect(function(inp)
+						if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+							if mm then mm:Disconnect() end; if mk then mk:Disconnect() end
+						end
+					end)
+				end)
+
+				-- Hue drag
+				local Huebtn = Instance.new("TextButton")
+				Huebtn.Parent = Hue; Huebtn.BackgroundTransparency = 1
+				Huebtn.Size = UDim2.new(1, 0, 1, 0); Huebtn.Text = ""
+				Huebtn.MouseButton1Down:Connect(function()
+					local mm, mk
+					local function stepHue()
+						local px = GetXY(Hue)
+						h = math.clamp(px, 0, 0.999); fireColor()
+					end
+					stepHue()
+					mm = Mouse.Move:Connect(stepHue)
+					mk = UserInputService.InputEnded:Connect(function(inp)
+						if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+							if mm then mm:Disconnect() end; if mk then mk:Disconnect() end
+						end
+					end)
+				end)
+
+				Swatch.MouseButton1Click:Connect(function()
+					Opened = not Opened
+					Frame:TweenSize(UDim2.new(1, 0, 0, Opened and 156 or 34), "Out", "Quad", 0.2, true)
+				end)
+
+				local self = {Instance = Frame}
+				function self:SetColor(col)
+					if typeof(col) ~= "Color3" then return end
+					h, s, v = col:ToHSV(); fireColor()
+				end
+				function self:GetColor() return Color3.fromHSV(h, s, v) end
+				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
+					function()
+						local col = Color3.fromHSV(h, s, v)
+						return {math.floor(col.R * 255 + 0.5), math.floor(col.G * 255 + 0.5), math.floor(col.B * 255 + 0.5)}
+					end,
+					function(val)
+						if type(val) == "table" and #val >= 3 then
+							self:SetColor(Color3.fromRGB(val[1], val[2], val[3]))
+						end
+					end)
+				return self
+			end
+
 			-- ── NewBar ────────────────────────────────────────────────────
 			function Section:NewBar()
 				local f = Instance.new("Frame")
 				f.Parent = Content; f.BackgroundColor3 = Color3.fromRGB(102, 5, 172)
 				f.BorderSizePixel = 0; f.Size = UDim2.new(1, 0, 0, 1)
 				return {Instance = f}
+			end
+
+			-- ── NewDivider ────────────────────────────────────────────────
+			-- thin separator line with vertical padding (gap above/below)
+			function Section:NewDivider()
+				local holder = Instance.new("Frame")
+				holder.Parent = Content; holder.BackgroundTransparency = 1
+				holder.Size = UDim2.new(1, 0, 0, 9)
+				local line = Instance.new("Frame")
+				line.Parent = holder; line.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+				line.BorderSizePixel = 0
+				line.AnchorPoint = Vector2.new(0.5, 0.5)
+				line.Position = UDim2.new(0.5, 0, 0.5, 0)
+				line.Size = UDim2.new(1, -8, 0, 1)
+				return {Instance = holder}
 			end
 
 			Section.Content = Content
