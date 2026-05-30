@@ -4,6 +4,7 @@ local Library = {}
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -90,7 +91,18 @@ function Library:NewWindow(hubName, gameName, version, discord)
 	discord = discord or "discord.gg/..."
 
 	local GUI = {}
-	
+
+	-- Config flag registry: flag -> {get=fn, set=fn}
+	GUI.Flags = {}
+	local ConfigRegistry = {}
+	local function RegisterFlag(flag, getter, setter)
+		if flag == nil then return end
+		local base, i = flag, 2
+		while ConfigRegistry[flag] do flag = base .. "_" .. i; i = i + 1 end
+		ConfigRegistry[flag] = {get = getter, set = setter}
+		return flag
+	end
+
 	-- Main ScreenGui
 	local ScreenGui = Instance.new("ScreenGui")
 	ScreenGui.Name = "Jael Library"
@@ -647,6 +659,9 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					ApplyToggleVisual(State)
 					callback(State)
 				end
+				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
+					function() return State end,
+					function(v) self:SetState(v and true or false) end)
 				return self
 			end
 
@@ -654,6 +669,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 			function Section:NewSlider(text, min, max, default, callback)
 				text = text or "Slider"; min = min or 0; max = max or 100
 				default = default or min; callback = callback or function() end
+				local current = default
 				local Frame = Instance.new("Frame")
 				Frame.Parent = Content; Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
 				Frame.Size = UDim2.new(1, 0, 0, 48); mkCorner(4, Frame)
@@ -684,6 +700,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					mm = Mouse.Move:Connect(function()
 						local pct = math.clamp(GetXY(Track), 0, 1)
 						local val = math.floor(min + (max - min) * pct)
+						current = val
 						Fill.Size = UDim2.new(pct, 0, 1, 0); ValLbl.Text = tostring(val); callback(val)
 					end)
 					mk = UserInputService.InputEnded:Connect(function(inp)
@@ -695,11 +712,15 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				local self = {Instance = Frame}
 				function self:SetValue(val)
 					val = math.clamp(math.floor(val), min, max)
+					current = val
 					local pct = (val - min) / (max - min)
 					Fill.Size = UDim2.new(pct, 0, 1, 0)
 					ValLbl.Text = tostring(val)
 					callback(val)
 				end
+				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
+					function() return current end,
+					function(v) self:SetValue(tonumber(v) or current) end)
 				return self
 			end
 
@@ -707,6 +728,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 			function Section:NewDropdown(text, items, callback)
 				text = text or "Dropdown"; items = items or {}; callback = callback or function() end
 				local Opened = false
+				local selected = nil
 				local Frame = Instance.new("Frame")
 				Frame.Parent = Content; Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
 				Frame.Size = UDim2.new(1, 0, 0, 34); Frame.ClipsDescendants = true; mkCorner(4, Frame)
@@ -758,7 +780,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 						IB.Font = Enum.Font.Gotham; IB.Text = tostring(item)
 						IB.TextColor3 = Color3.fromRGB(255, 255, 255); IB.TextSize = 12
 						IB.MouseButton1Click:Connect(function()
-							SelLbl.Text = tostring(item); ToggleDrop(); callback(item)
+							selected = item; SelLbl.Text = tostring(item); ToggleDrop(); callback(item)
 						end)
 					end
 				end
@@ -768,11 +790,20 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					items = newItems or {}
 					if Opened then ToggleDrop() end
 					BuildItems()
+					selected = nil
 					SelLbl.Text = "None"
 				end
 				function self:SetSelected(item)
+					selected = item
 					SelLbl.Text = item ~= nil and tostring(item) or "None"
 				end
+				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
+					function() return selected end,
+					function(v)
+						selected = v
+						SelLbl.Text = v ~= nil and tostring(v) or "None"
+						if v ~= nil then callback(v) end
+					end)
 				return self
 			end
 
@@ -846,6 +877,23 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				function self:GetBindInfo()
 					return {type = bindType, key = bindKey, mouseName = bindMouseName}
 				end
+				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
+					function()
+						return {
+							type = bindType,
+							key = (bindType == "Keyboard" and bindKey and bindKey ~= Enum.KeyCode.Unknown) and bindKey.Name or nil,
+							mouseName = bindMouseName,
+						}
+					end,
+					function(info)
+						if type(info) ~= "table" then return end
+						if info.type == "Keyboard" and info.key then
+							local ok, kc = pcall(function() return Enum.KeyCode[info.key] end)
+							if ok and kc then self:SetKey(kc) end
+						elseif info.type == "Mouse" and info.mouseName then
+							self:SetMouseBind(info.mouseName)
+						end
+					end)
 				return self
 			end
 
@@ -881,6 +929,9 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				local self = {Instance = Frame}
 				function self:GetValue() return Box.Text end
 				function self:SetValue(v) Box.Text = tostring(v or "") end
+				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
+					function() return Box.Text end,
+					function(v) Box.Text = tostring(v or ""); callback(Box.Text, false) end)
 				return self
 			end
 
@@ -892,11 +943,293 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				return {Instance = f}
 			end
 
+			Section.Content = Content
+			Section.Container = SectionFrame
 			return Section
 		end
 
 
+		Tab.Frame = TabFrame
+		Tab.Left = LeftScroll
+		Tab.Right = RightScroll
+		Tab.Button = TabBtn
 		return Tab
+	end
+
+	-- ════════════════ CONFIG SYSTEM ════════════════
+	do
+		local CFG_ROOT = "JaelHub"
+		local CFG_DIR = CFG_ROOT .. "/" .. tostring(game.PlaceId)
+
+		local function ensureFolders()
+			pcall(function() if not isfolder(CFG_ROOT) then makefolder(CFG_ROOT) end end)
+			pcall(function() if not isfolder(CFG_DIR) then makefolder(CFG_DIR) end end)
+		end
+
+		local function listConfigs()
+			local out = {}
+			pcall(function()
+				if isfolder(CFG_DIR) then
+					for _, f in ipairs(listfiles(CFG_DIR)) do
+						if f:sub(-5) == ".json" then
+							local nm = f:match("[\\/]([^\\/]+)%.json$")
+							if nm then table.insert(out, nm) end
+						end
+					end
+				end
+			end)
+			table.sort(out)
+			return out
+		end
+
+		local function saveConfig(nm)
+			if not nm or nm == "" then return false end
+			ensureFolders()
+			local data = {}
+			for flag, h in pairs(ConfigRegistry) do
+				local ok, val = pcall(h.get)
+				if ok and val ~= nil then data[flag] = val end
+			end
+			local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
+			if not ok then return false end
+			return (pcall(function() writefile(CFG_DIR .. "/" .. nm .. ".json", json) end))
+		end
+
+		local function loadConfig(nm)
+			if not nm or nm == "" then return false end
+			local path = CFG_DIR .. "/" .. nm .. ".json"
+			local exists = false
+			pcall(function() exists = isfile(path) end)
+			if not exists then return false end
+			local ok, content = pcall(function() return readfile(path) end)
+			if not ok then return false end
+			local ok2, data = pcall(function() return HttpService:JSONDecode(content) end)
+			if not ok2 or type(data) ~= "table" then return false end
+			for flag, val in pairs(data) do
+				local h = ConfigRegistry[flag]
+				if h and h.set then pcall(h.set, val) end
+			end
+			return true
+		end
+
+		local function deleteConfig(nm)
+			if not nm or nm == "" then return false end
+			return (pcall(function() delfile(CFG_DIR .. "/" .. nm .. ".json") end))
+		end
+
+		-- Build Config tab (always last in sidebar via high LayoutOrder)
+		local ConfigTab = GUI:NewTab("Configs")
+		ConfigTab.Button.LayoutOrder = 9999
+
+		local function mkCorner(r, p)
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = p
+		end
+
+		local function mkCard(parent, title)
+			local Card = Instance.new("Frame")
+			Card.Parent = parent
+			Card.BackgroundColor3 = Color3.fromRGB(41, 41, 41)
+			Card.BorderSizePixel = 0
+			Card.Size = UDim2.new(1, 0, 0, 0)
+			Card.AutomaticSize = Enum.AutomaticSize.Y
+			mkCorner(6, Card)
+			local Header = Instance.new("Frame")
+			Header.Parent = Card; Header.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
+			Header.BorderSizePixel = 0; Header.Size = UDim2.new(1, 0, 0, 28)
+			mkCorner(6, Header)
+			local HFill = Instance.new("Frame")
+			HFill.Parent = Header; HFill.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
+			HFill.BorderSizePixel = 0; HFill.Position = UDim2.new(0, 0, 0.5, 0); HFill.Size = UDim2.new(1, 0, 0.5, 0)
+			local HTitle = Instance.new("TextLabel")
+			HTitle.Parent = Header; HTitle.BackgroundTransparency = 1
+			HTitle.Position = UDim2.new(0, 10, 0, 0); HTitle.Size = UDim2.new(1, -10, 1, 0)
+			HTitle.Font = Enum.Font.GothamBold; HTitle.Text = title
+			HTitle.TextColor3 = Color3.fromRGB(255, 255, 255); HTitle.TextSize = 12
+			HTitle.TextXAlignment = Enum.TextXAlignment.Left
+			local Accent = Instance.new("Frame")
+			Accent.Parent = Card; Accent.BackgroundColor3 = Color3.fromRGB(102, 5, 172)
+			Accent.BorderSizePixel = 0; Accent.Position = UDim2.new(0, 0, 0, 28); Accent.Size = UDim2.new(1, 0, 0, 2)
+			local Content = Instance.new("Frame")
+			Content.Parent = Card; Content.BackgroundTransparency = 1
+			Content.Position = UDim2.new(0, 0, 0, 30); Content.Size = UDim2.new(1, 0, 0, 0)
+			Content.AutomaticSize = Enum.AutomaticSize.Y
+			local CPad = Instance.new("UIPadding")
+			CPad.Parent = Content
+			CPad.PaddingLeft = UDim.new(0, 6); CPad.PaddingRight = UDim.new(0, 6)
+			CPad.PaddingTop = UDim.new(0, 6); CPad.PaddingBottom = UDim.new(0, 8)
+			local CList = Instance.new("UIListLayout")
+			CList.Parent = Content; CList.Padding = UDim.new(0, 5); CList.SortOrder = Enum.SortOrder.LayoutOrder
+			return Content
+		end
+
+		local Content = mkCard(ConfigTab.Left, "Configuration")
+
+		-- Name input
+		local NameBox = Instance.new("TextBox")
+		NameBox.Parent = Content
+		NameBox.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
+		NameBox.Size = UDim2.new(1, 0, 0, 28)
+		NameBox.Font = Enum.Font.Gotham; NameBox.Text = ""
+		NameBox.PlaceholderText = "Config name..."
+		NameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+		NameBox.PlaceholderColor3 = Color3.fromRGB(110, 110, 110)
+		NameBox.TextSize = 12; NameBox.ClearTextOnFocus = false
+		NameBox.LayoutOrder = 1
+		mkCorner(4, NameBox)
+		local NBPad = Instance.new("UIPadding"); NBPad.Parent = NameBox; NBPad.PaddingLeft = UDim.new(0, 8)
+
+		-- Status label
+		local Status = Instance.new("TextLabel")
+		Status.Parent = Content; Status.BackgroundTransparency = 1
+		Status.Size = UDim2.new(1, 0, 0, 14); Status.LayoutOrder = 2
+		Status.Font = Enum.Font.Gotham; Status.Text = ""
+		Status.TextColor3 = Color3.fromRGB(180, 180, 180); Status.TextSize = 11
+		Status.TextXAlignment = Enum.TextXAlignment.Left
+		local function setStatus(txt, good)
+			Status.Text = txt
+			Status.TextColor3 = good and Color3.fromRGB(2, 255, 108) or Color3.fromRGB(255, 120, 120)
+		end
+
+		local refreshList -- fwd decl
+
+		local function makeButton(txt, order, cb)
+			local Frame = Instance.new("Frame")
+			Frame.Parent = Content; Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+			Frame.Size = UDim2.new(1, 0, 0, 30); Frame.LayoutOrder = order
+			mkCorner(4, Frame)
+			local Lbl = Instance.new("TextLabel")
+			Lbl.Parent = Frame; Lbl.BackgroundTransparency = 1; Lbl.Size = UDim2.new(1, 0, 1, 0)
+			Lbl.Font = Enum.Font.Gotham; Lbl.Text = txt
+			Lbl.TextColor3 = Color3.fromRGB(255, 255, 255); Lbl.TextSize = 12
+			local Btn = Instance.new("TextButton")
+			Btn.Parent = Frame; Btn.BackgroundTransparency = 1; Btn.Size = UDim2.new(1, 0, 1, 0); Btn.Text = ""
+			local Stroke = Instance.new("UIStroke")
+			Stroke.Parent = Frame; Stroke.Color = Color3.fromRGB(102, 5, 172); Stroke.Thickness = 0
+			Btn.MouseEnter:Connect(function() Stroke.Thickness = 1 end)
+			Btn.MouseLeave:Connect(function() Stroke.Thickness = 0 end)
+			Btn.MouseButton1Click:Connect(function() Stroke.Thickness = 2; task.spawn(cb); task.wait(0.12); Stroke.Thickness = 0 end)
+			return Frame
+		end
+
+		makeButton("Create", 3, function()
+			local nm = NameBox.Text
+			if nm == "" then setStatus("Enter a name first", false) return end
+			if saveConfig(nm) then setStatus("Created '" .. nm .. "'", true); refreshList()
+			else setStatus("Failed to create", false) end
+		end)
+		makeButton("Save", 4, function()
+			local nm = NameBox.Text
+			if nm == "" then setStatus("Enter a name first", false) return end
+			if saveConfig(nm) then setStatus("Saved '" .. nm .. "'", true); refreshList()
+			else setStatus("Failed to save", false) end
+		end)
+		makeButton("Load", 5, function()
+			local nm = NameBox.Text
+			if nm == "" then setStatus("Enter a name first", false) return end
+			if loadConfig(nm) then setStatus("Loaded '" .. nm .. "'", true)
+			else setStatus("Config not found", false) end
+		end)
+		makeButton("Delete", 6, function()
+			local nm = NameBox.Text
+			if nm == "" then setStatus("Enter a name first", false) return end
+			if deleteConfig(nm) then setStatus("Deleted '" .. nm .. "'", true); NameBox.Text = ""; refreshList()
+			else setStatus("Failed to delete", false) end
+		end)
+
+		-- ── UI Toggle Keybind ─────────────────────────────────────────
+		local KeyContent = mkCard(ConfigTab.Left, "Settings")
+		do
+			local toggleKey = Enum.KeyCode.RightShift
+
+			local Row = Instance.new("Frame")
+			Row.Parent = KeyContent; Row.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+			Row.Size = UDim2.new(1, 0, 0, 34); mkCorner(4, Row)
+			local RLbl = Instance.new("TextLabel")
+			RLbl.Parent = Row; RLbl.BackgroundTransparency = 1
+			RLbl.Position = UDim2.new(0, 8, 0, 0); RLbl.Size = UDim2.new(0.5, 0, 1, 0)
+			RLbl.Font = Enum.Font.Gotham; RLbl.Text = "Toggle UI Key"
+			RLbl.TextColor3 = Color3.fromRGB(255, 255, 255); RLbl.TextSize = 12
+			RLbl.TextXAlignment = Enum.TextXAlignment.Left
+			local KBtn = Instance.new("TextButton")
+			KBtn.Parent = Row; KBtn.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
+			KBtn.Position = UDim2.new(1, -78, 0.5, -11); KBtn.Size = UDim2.new(0, 72, 0, 22)
+			KBtn.Font = Enum.Font.Gotham; KBtn.Text = toggleKey.Name
+			KBtn.TextColor3 = Color3.fromRGB(255, 255, 255); KBtn.TextSize = 11
+			mkCorner(4, KBtn)
+
+			KBtn.MouseButton1Click:Connect(function()
+				KBtn.Text = "..."
+				local done, conn = false, nil
+				local function finish(input)
+					if done then return end; done = true; if conn then conn:Disconnect() end
+					if input and input.UserInputType == Enum.UserInputType.Keyboard then
+						toggleKey = input.KeyCode
+					end
+					KBtn.Text = toggleKey.Name
+				end
+				conn = UserInputService.InputBegan:Connect(finish)
+				task.delay(2, function() finish(nil) end)
+			end)
+
+			UserInputService.InputBegan:Connect(function(input, gp)
+				if gp then return end
+				if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == toggleKey then
+					ScreenGui.Enabled = not ScreenGui.Enabled
+				end
+			end)
+
+			RegisterFlag("UI/ToggleKey",
+				function() return toggleKey.Name end,
+				function(v)
+					if type(v) ~= "string" then return end
+					local ok, kc = pcall(function() return Enum.KeyCode[v] end)
+					if ok and kc then toggleKey = kc; KBtn.Text = kc.Name end
+				end)
+		end
+
+		-- Saved configs list card
+		local ListContent = mkCard(ConfigTab.Left, "Saved Configs")
+
+		refreshList = function()
+			for _, ch in ipairs(ListContent:GetChildren()) do
+				if ch:IsA("Frame") or ch:IsA("TextLabel") then ch:Destroy() end
+			end
+			local cfgs = listConfigs()
+			if #cfgs == 0 then
+				local Empty = Instance.new("TextLabel")
+				Empty.Parent = ListContent; Empty.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+				Empty.Size = UDim2.new(1, 0, 0, 26)
+				Empty.Font = Enum.Font.Gotham; Empty.Text = "No saved configs"
+				Empty.TextColor3 = Color3.fromRGB(150, 150, 150); Empty.TextSize = 11
+				mkCorner(4, Empty)
+				return
+			end
+			for _, nm in ipairs(cfgs) do
+				local Item = Instance.new("Frame")
+				Item.Parent = ListContent; Item.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+				Item.Size = UDim2.new(1, 0, 0, 28)
+				mkCorner(4, Item)
+				local ILbl = Instance.new("TextLabel")
+				ILbl.Parent = Item; ILbl.BackgroundTransparency = 1
+				ILbl.Position = UDim2.new(0, 8, 0, 0); ILbl.Size = UDim2.new(1, -16, 1, 0)
+				ILbl.Font = Enum.Font.Gotham; ILbl.Text = nm
+				ILbl.TextColor3 = Color3.fromRGB(255, 255, 255); ILbl.TextSize = 12
+				ILbl.TextXAlignment = Enum.TextXAlignment.Left
+				local IBtn = Instance.new("TextButton")
+				IBtn.Parent = Item; IBtn.BackgroundTransparency = 1; IBtn.Size = UDim2.new(1, 0, 1, 0); IBtn.Text = ""
+				local IStroke = Instance.new("UIStroke")
+				IStroke.Parent = Item; IStroke.Color = Color3.fromRGB(102, 5, 172); IStroke.Thickness = 0
+				IBtn.MouseEnter:Connect(function() IStroke.Thickness = 1 end)
+				IBtn.MouseLeave:Connect(function() IStroke.Thickness = 0 end)
+				IBtn.MouseButton1Click:Connect(function()
+					NameBox.Text = nm -- click config => selected in input for save/load/delete
+					setStatus("Selected '" .. nm .. "'", true)
+				end)
+			end
+		end
+
+		ensureFolders()
+		refreshList()
 	end
 
 	return GUI
