@@ -639,13 +639,13 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				TogBg.Size = UDim2.new(1, 0, 1, 0); mkCorner(4, TogBg)
 				local Ind = Instance.new("Frame")
 				Ind.Parent = TogBg; Ind.BackgroundColor3 = Color3.fromRGB(255, 81, 81)
-				Ind.Position = UDim2.new(0, 24, 0.1, 0); Ind.Size = UDim2.new(0, 16, 0.8, 0)
+				Ind.Position = UDim2.new(0, 4, 0.1, 0); Ind.Size = UDim2.new(0, 16, 0.8, 0)
 				mkCorner(3, Ind)
 				local function ApplyToggleVisual(s)
 					if s then
-						TweenService:Create(Ind, TweenInfo.new(0.2), {Position = UDim2.new(0, 4, 0.1, 0), BackgroundColor3 = Color3.fromRGB(2, 255, 108)}):Play()
+						TweenService:Create(Ind, TweenInfo.new(0.2), {Position = UDim2.new(0, 24, 0.1, 0), BackgroundColor3 = Color3.fromRGB(2, 255, 108)}):Play()
 					else
-						TweenService:Create(Ind, TweenInfo.new(0.2), {Position = UDim2.new(0, 24, 0.1, 0), BackgroundColor3 = Color3.fromRGB(255, 81, 81)}):Play()
+						TweenService:Create(Ind, TweenInfo.new(0.2), {Position = UDim2.new(0, 4, 0.1, 0), BackgroundColor3 = Color3.fromRGB(255, 81, 81)}):Play()
 					end
 				end
 				TogBtn.MouseButton1Click:Connect(function()
@@ -1062,7 +1062,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 			return Content
 		end
 
-		local Content = mkCard(ConfigTab.Left, "Configuration")
+		local Content = mkCard(ConfigTab.Right, "Configuration")
 
 		-- Name input
 		local NameBox = Instance.new("TextBox")
@@ -1137,7 +1137,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		end)
 
 		-- ── UI Toggle Keybind ─────────────────────────────────────────
-		local KeyContent = mkCard(ConfigTab.Left, "Settings")
+		local KeyContent = mkCard(ConfigTab.Right, "Settings")
 		do
 			local toggleKey = Enum.KeyCode.RightShift
 
@@ -1189,6 +1189,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 
 		-- Saved configs list card
 		local ListContent = mkCard(ConfigTab.Left, "Saved Configs")
+		-- list lives in LEFT column; Configuration + Settings in RIGHT
 
 		refreshList = function()
 			for _, ch in ipairs(ListContent:GetChildren()) do
