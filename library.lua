@@ -139,7 +139,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		if _ttConn then _ttConn:Disconnect() end
 		_ttConn = RunService.RenderStepped:Connect(function()
 			local mp = UserInputService:GetMouseLocation()
-			Tooltip.Position = UDim2.new(0, mp.X + 6, 0, mp.Y + 20)
+			Tooltip.Position = UDim2.new(0, mp.X + 2, 0, mp.Y + 2)
 		end)
 	end
 	local function hideTooltip()
@@ -572,7 +572,8 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		LeftScroll.BorderSizePixel = 0
 		LeftScroll.Position = UDim2.new(0, PAD, 0, PAD)
 		LeftScroll.Size = UDim2.new(0, COL_W, 1, -PAD * 2)
-		LeftScroll.ScrollBarThickness = 0
+		LeftScroll.ScrollBarThickness = 3
+		LeftScroll.ScrollBarImageColor3 = Color3.fromRGB(102, 5, 172)
 		LeftScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		LeftScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 
@@ -588,7 +589,8 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		RightScroll.BorderSizePixel = 0
 		RightScroll.Position = UDim2.new(0, PAD + COL_W + GAP, 0, PAD)
 		RightScroll.Size = UDim2.new(0, COL_W, 1, -PAD * 2)
-		RightScroll.ScrollBarThickness = 0
+		RightScroll.ScrollBarThickness = 3
+		RightScroll.ScrollBarImageColor3 = Color3.fromRGB(102, 5, 172)
 		RightScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		RightScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 
@@ -1544,6 +1546,11 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				CDrop:TweenSize(UDim2.new(1, 0, 0, totalH), "Out", "Quad", 0.2, true)
 				TweenService:Create(CDArrow, TweenInfo.new(0.2), {Rotation = cornerOpened and 90 or -90}):Play()
 				CDItems.Visible = cornerOpened
+				if cornerOpened then
+					task.delay(0.22, function()
+						ConfigTab.Right.CanvasPosition = Vector2.new(0, ConfigTab.Right.AbsoluteCanvasSize.Y)
+					end)
+				end
 			end
 			CDArrow.MouseButton1Click:Connect(toggleCornerDrop)
 			for _, corner in ipairs(corners) do
