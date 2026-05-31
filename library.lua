@@ -110,6 +110,66 @@ function Library:NewWindow(hubName, gameName, version, discord)
 	ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	ScreenGui.ResetOnSpawn = false
 
+	-- ── Tooltip ────────────────────────────────────────────────────
+	local Tooltip = Instance.new("Frame")
+	Tooltip.Name = "JaelTooltip"
+	Tooltip.Parent = ScreenGui
+	Tooltip.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	Tooltip.AutomaticSize = Enum.AutomaticSize.XY
+	Tooltip.Visible = false
+	Tooltip.ZIndex = 200
+	Tooltip.BorderSizePixel = 0
+	local _ttC = Instance.new("UICorner"); _ttC.CornerRadius = UDim.new(0, 4); _ttC.Parent = Tooltip
+	local _ttS = Instance.new("UIStroke"); _ttS.Color = Color3.fromRGB(102, 5, 172); _ttS.Thickness = 1; _ttS.Parent = Tooltip
+	local _ttP = Instance.new("UIPadding")
+	_ttP.PaddingLeft = UDim.new(0, 8); _ttP.PaddingRight = UDim.new(0, 8)
+	_ttP.PaddingTop = UDim.new(0, 4); _ttP.PaddingBottom = UDim.new(0, 4); _ttP.Parent = Tooltip
+	local TooltipLabel = Instance.new("TextLabel")
+	TooltipLabel.Parent = Tooltip; TooltipLabel.BackgroundTransparency = 1
+	TooltipLabel.AutomaticSize = Enum.AutomaticSize.XY
+	TooltipLabel.Size = UDim2.new(0, 0, 0, 0)
+	TooltipLabel.Font = Enum.Font.Gotham; TooltipLabel.Text = ""
+	TooltipLabel.TextColor3 = Color3.fromRGB(200, 200, 200); TooltipLabel.TextSize = 11
+	TooltipLabel.ZIndex = 201
+
+	local _ttConn
+	local function showTooltip(text)
+		TooltipLabel.Text = text
+		Tooltip.Visible = true
+		if _ttConn then _ttConn:Disconnect() end
+		_ttConn = RunService.RenderStepped:Connect(function()
+			local mp = UserInputService:GetMouseLocation()
+			Tooltip.Position = UDim2.new(0, mp.X + 14, 0, mp.Y + 6)
+		end)
+	end
+	local function hideTooltip()
+		Tooltip.Visible = false
+		if _ttConn then _ttConn:Disconnect(); _ttConn = nil end
+	end
+
+	-- ── Notifications ───────────────────────────────────────────────
+	local notifCorner = "BottomRight"
+	local NotifContainer = Instance.new("Frame")
+	NotifContainer.Name = "JaelNotifs"
+	NotifContainer.Parent = ScreenGui
+	NotifContainer.BackgroundTransparency = 1
+	NotifContainer.BorderSizePixel = 0
+	NotifContainer.Size = UDim2.new(0, 280, 1, -20)
+	NotifContainer.ZIndex = 150
+	local NotifList = Instance.new("UIListLayout")
+	NotifList.Parent = NotifContainer
+	NotifList.Padding = UDim.new(0, 6)
+	NotifList.SortOrder = Enum.SortOrder.LayoutOrder
+
+	local function updateNotifLayout()
+		local isRight = notifCorner == "TopRight" or notifCorner == "BottomRight"
+		local isBottom = notifCorner == "BottomLeft" or notifCorner == "BottomRight"
+		NotifContainer.Position = UDim2.new(isRight and 1 or 0, isRight and -288 or 8, 0, 10)
+		NotifList.VerticalAlignment = isBottom and Enum.VerticalAlignment.Bottom or Enum.VerticalAlignment.Top
+		NotifList.HorizontalAlignment = isRight and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
+	end
+	updateNotifLayout()
+
 	-- MainFrame
 	local MainFrame = Instance.new("Frame")
 	MainFrame.Name = "MainFrame"
@@ -381,6 +441,83 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		return FeatureLabel
 	end
 
+	-- ── GUI:Notify ─────────────────────────────────────────────────
+	function GUI:Notify(title, body, duration)
+		title = title or "Notification"
+		body = (body and body ~= "") and body or nil
+		duration = duration or 3
+		local isRight = notifCorner == "TopRight" or notifCorner == "BottomRight"
+		local cardH = body and 70 or 48
+		local offX = isRight and 300 or -300
+
+		local Wrapper = Instance.new("Frame")
+		Wrapper.Parent = NotifContainer
+		Wrapper.BackgroundTransparency = 1
+		Wrapper.BorderSizePixel = 0
+		Wrapper.Size = UDim2.new(1, 0, 0, cardH)
+		Wrapper.ClipsDescendants = true
+
+		local Card = Instance.new("Frame")
+		Card.Parent = Wrapper
+		Card.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+		Card.BorderSizePixel = 0
+		Card.Size = UDim2.new(1, 0, 0, cardH)
+		Card.Position = UDim2.new(0, offX, 0, 0)
+		local _nc = Instance.new("UICorner"); _nc.CornerRadius = UDim.new(0, 6); _nc.Parent = Card
+		local _ns = Instance.new("UIStroke"); _ns.Color = Color3.fromRGB(102, 5, 172); _ns.Thickness = 1; _ns.Parent = Card
+
+		local Acc = Instance.new("Frame")
+		Acc.Parent = Card; Acc.BackgroundColor3 = Color3.fromRGB(102, 5, 172)
+		Acc.BorderSizePixel = 0; Acc.Size = UDim2.new(0, 3, 1, 0)
+		local _ac = Instance.new("UICorner"); _ac.CornerRadius = UDim.new(0, 6); _ac.Parent = Acc
+
+		local TLbl = Instance.new("TextLabel")
+		TLbl.Parent = Card; TLbl.BackgroundTransparency = 1
+		TLbl.Position = UDim2.new(0, 10, 0, 8)
+		TLbl.Size = UDim2.new(1, -14, 0, 15)
+		TLbl.Font = Enum.Font.GothamBold; TLbl.Text = title
+		TLbl.TextColor3 = Color3.fromRGB(255, 255, 255); TLbl.TextSize = 12
+		TLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+		if body then
+			local BLbl = Instance.new("TextLabel")
+			BLbl.Parent = Card; BLbl.BackgroundTransparency = 1
+			BLbl.Position = UDim2.new(0, 10, 0, 26)
+			BLbl.Size = UDim2.new(1, -14, 0, 22)
+			BLbl.Font = Enum.Font.Gotham; BLbl.Text = body
+			BLbl.TextColor3 = Color3.fromRGB(180, 180, 180); BLbl.TextSize = 11
+			BLbl.TextXAlignment = Enum.TextXAlignment.Left; BLbl.TextWrapped = true
+		end
+
+		local ProgBg = Instance.new("Frame")
+		ProgBg.Parent = Card; ProgBg.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+		ProgBg.BorderSizePixel = 0
+		ProgBg.Position = UDim2.new(0, 10, 0, cardH - 10)
+		ProgBg.Size = UDim2.new(1, -20, 0, 4)
+		local _pbc = Instance.new("UICorner"); _pbc.CornerRadius = UDim.new(0, 2); _pbc.Parent = ProgBg
+		local ProgFill = Instance.new("Frame")
+		ProgFill.Parent = ProgBg; ProgFill.BackgroundColor3 = Color3.fromRGB(102, 5, 172)
+		ProgFill.BorderSizePixel = 0; ProgFill.Size = UDim2.new(1, 0, 1, 0)
+		local _pfc = Instance.new("UICorner"); _pfc.CornerRadius = UDim.new(0, 2); _pfc.Parent = ProgFill
+
+		TweenService:Create(Card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0, 0, 0, 0)
+		}):Play()
+
+		task.spawn(function()
+			task.wait(0.4)
+			TweenService:Create(ProgFill, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+				Size = UDim2.new(0, 0, 1, 0)
+			}):Play()
+			task.wait(duration)
+			TweenService:Create(Card, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+				Position = UDim2.new(0, offX, 0, 0)
+			}):Play()
+			task.wait(0.35)
+			Wrapper:Destroy()
+		end)
+	end
+
 	-- Tab Creation
 	function GUI:NewTab(tabName)
 		tabName = tabName or "New Tab"
@@ -461,6 +598,23 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		RightLayout.Padding = UDim.new(0, 6)
 		RightLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
+		local FullScroll = Instance.new("ScrollingFrame")
+		FullScroll.Name = "FullColumn"
+		FullScroll.Parent = TabFrame
+		FullScroll.BackgroundTransparency = 1
+		FullScroll.BorderSizePixel = 0
+		FullScroll.Position = UDim2.new(0, PAD, 0, PAD)
+		FullScroll.Size = UDim2.new(0, COL_W * 2 + GAP, 1, -PAD * 2)
+		FullScroll.ScrollBarThickness = 0
+		FullScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		FullScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+		FullScroll.ZIndex = 2
+
+		local FullLayout = Instance.new("UIListLayout")
+		FullLayout.Parent = FullScroll
+		FullLayout.Padding = UDim.new(0, 6)
+		FullLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
 		-- Connect Tab Switch
 		TabBtn.MouseButton1Click:Connect(function()
 			-- Switch to this Tab
@@ -488,10 +642,13 @@ function Library:NewWindow(hubName, gameName, version, discord)
 			TweenService:Create(TabBtnLabel, TweenInfo.new(0.3), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
 		end)
 
-		-- NewSection: creates a named card in Left or Right column
+		-- NewSection: creates a named card in Left, Right, or Full column
 		function Tab:NewSection(name, side)
 			name = name or "Section"
-			local col = (tostring(side or "left")):lower() == "right" and RightScroll or LeftScroll
+			local sideStr = (tostring(side or "left")):lower()
+			local col = sideStr == "right" and RightScroll
+				or sideStr == "full" and FullScroll
+				or LeftScroll
 			local Section = {}
 
 			-- ── Section container (auto-sizes Y) ─────────────────────────
@@ -572,9 +729,14 @@ function Library:NewWindow(hubName, gameName, version, discord)
 			local function mkStroke(col2, thick, p)
 				local s = Instance.new("UIStroke"); s.Color = col2; s.Thickness = thick; s.Parent = p
 			end
+			local function applyTooltip(frame, tip)
+				if not tip or tip == "" then return end
+				frame.MouseEnter:Connect(function() showTooltip(tip) end)
+				frame.MouseLeave:Connect(function() hideTooltip() end)
+			end
 
 			-- ── NewLabel ──────────────────────────────────────────────────
-			function Section:NewLabel(text)
+			function Section:NewLabel(text, tooltip)
 				text = text or "Label"
 				local f = Instance.new("TextLabel")
 				f.Parent = Content
@@ -588,11 +750,12 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				local p = Instance.new("UIPadding")
 				p.PaddingLeft = UDim.new(0, 8); p.Parent = f
 				mkCorner(4, f)
+				applyTooltip(f, tooltip)
 				return {Instance = f}
 			end
 
 			-- ── NewButton ─────────────────────────────────────────────────
-			function Section:NewButton(text, callback)
+			function Section:NewButton(text, callback, tooltip)
 				text = text or "Button"; callback = callback or function() end
 				local Frame = Instance.new("Frame")
 				Frame.Parent = Content
@@ -614,11 +777,12 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				Btn.MouseButton1Click:Connect(function()
 					Stroke.Thickness = 2; task.spawn(callback); task.wait(0.15); Stroke.Thickness = 1
 				end)
+				applyTooltip(Frame, tooltip)
 				return {Instance = Frame}
 			end
 
 			-- ── NewToggle ─────────────────────────────────────────────────
-			function Section:NewToggle(text, callback)
+			function Section:NewToggle(text, callback, tooltip)
 				text = text or "Toggle"; callback = callback or function() end
 				local State = false
 				local Frame = Instance.new("Frame")
@@ -662,11 +826,12 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
 					function() return State end,
 					function(v) self:SetState(v and true or false) end)
+				applyTooltip(Frame, tooltip)
 				return self
 			end
 
 			-- ── NewSlider ─────────────────────────────────────────────────
-			function Section:NewSlider(text, min, max, default, callback)
+			function Section:NewSlider(text, min, max, default, callback, tooltip)
 				text = text or "Slider"; min = min or 0; max = max or 100
 				default = default or min; callback = callback or function() end
 				local current = default
@@ -721,11 +886,12 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
 					function() return current end,
 					function(v) self:SetValue(tonumber(v) or current) end)
+				applyTooltip(Frame, tooltip)
 				return self
 			end
 
 			-- ── NewDropdown ───────────────────────────────────────────────
-			function Section:NewDropdown(text, items, callback)
+			function Section:NewDropdown(text, items, callback, tooltip)
 				text = text or "Dropdown"; items = items or {}; callback = callback or function() end
 				local Opened = false
 				local selected = nil
@@ -804,11 +970,12 @@ function Library:NewWindow(hubName, gameName, version, discord)
 						SelLbl.Text = v ~= nil and tostring(v) or "None"
 						if v ~= nil then callback(v) end
 					end)
+				applyTooltip(Frame, tooltip)
 				return self
 			end
 
 			-- ── NewKeybind ────────────────────────────────────────────────
-			function Section:NewKeybind(text, key, callback)
+			function Section:NewKeybind(text, key, callback, tooltip)
 				text = text or "Keybind"; callback = callback or function() end
 				local bindType, bindKey, bindMouseName
 				local friendlyNames = {MouseButton1="MB1",MouseButton2="MB2",MouseButton3="MB3",MouseButton4="MB4",MouseButton5="MB5"}
@@ -894,11 +1061,12 @@ function Library:NewWindow(hubName, gameName, version, discord)
 							self:SetMouseBind(info.mouseName)
 						end
 					end)
+				applyTooltip(Frame, tooltip)
 				return self
 			end
 
 			-- ── NewInput ──────────────────────────────────────────────────
-			function Section:NewInput(text, placeholder, callback)
+			function Section:NewInput(text, placeholder, callback, tooltip)
 				text = text or "Input"; placeholder = placeholder or "..."; callback = callback or function() end
 				local Frame = Instance.new("Frame")
 				Frame.Parent = Content; Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
@@ -932,11 +1100,12 @@ function Library:NewWindow(hubName, gameName, version, discord)
 				RegisterFlag(tabName .. "/" .. name .. "/" .. text,
 					function() return Box.Text end,
 					function(v) Box.Text = tostring(v or ""); callback(Box.Text, false) end)
+				applyTooltip(Frame, tooltip)
 				return self
 			end
 
 			-- ── NewColorPicker ────────────────────────────────────────────
-			function Section:NewColorPicker(text, default, callback)
+			function Section:NewColorPicker(text, default, callback, tooltip)
 				text = text or "Color"; callback = callback or function() end
 				default = default or Color3.fromRGB(255, 255, 255)
 				local h, s, v = default:ToHSV()
@@ -1070,6 +1239,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 							self:SetColor(Color3.fromRGB(val[1], val[2], val[3]))
 						end
 					end)
+				applyTooltip(Frame, tooltip)
 				return self
 			end
 
@@ -1105,6 +1275,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		Tab.Frame = TabFrame
 		Tab.Left = LeftScroll
 		Tab.Right = RightScroll
+		Tab.Full = FullScroll
 		Tab.Button = TabBtn
 		return Tab
 	end
@@ -1292,7 +1463,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		-- ── UI Toggle Keybind ─────────────────────────────────────────
 		local KeyContent = mkCard(ConfigTab.Right, "Settings")
 		do
-			local toggleKey = Enum.KeyCode.RightShift
+			local toggleKey = Enum.KeyCode.RightControl
 
 			local Row = Instance.new("Frame")
 			Row.Parent = KeyContent; Row.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
@@ -1338,6 +1509,85 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					local ok, kc = pcall(function() return Enum.KeyCode[v] end)
 					if ok and kc then toggleKey = kc; KBtn.Text = kc.Name end
 				end)
+
+			-- Notif corner
+			local corners = {"BottomRight", "BottomLeft", "TopRight", "TopLeft"}
+			local cornerIdx = 1
+			local CornerRow = Instance.new("Frame")
+			CornerRow.Parent = KeyContent; CornerRow.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+			CornerRow.Size = UDim2.new(1, 0, 0, 34); mkCorner(4, CornerRow)
+			local CRLbl = Instance.new("TextLabel")
+			CRLbl.Parent = CornerRow; CRLbl.BackgroundTransparency = 1
+			CRLbl.Position = UDim2.new(0, 8, 0, 0); CRLbl.Size = UDim2.new(0.5, 0, 1, 0)
+			CRLbl.Font = Enum.Font.Gotham; CRLbl.Text = "Notif Corner"
+			CRLbl.TextColor3 = Color3.fromRGB(255, 255, 255); CRLbl.TextSize = 12
+			CRLbl.TextXAlignment = Enum.TextXAlignment.Left
+			local CBtn = Instance.new("TextButton")
+			CBtn.Parent = CornerRow; CBtn.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
+			CBtn.Position = UDim2.new(1, -114, 0.5, -11); CBtn.Size = UDim2.new(0, 108, 0, 22)
+			CBtn.Font = Enum.Font.Gotham; CBtn.Text = corners[cornerIdx]
+			CBtn.TextColor3 = Color3.fromRGB(255, 255, 255); CBtn.TextSize = 10
+			mkCorner(4, CBtn)
+			local CBtnStroke = Instance.new("UIStroke"); CBtnStroke.Color = Color3.fromRGB(102, 5, 172); CBtnStroke.Thickness = 0; CBtnStroke.Parent = CBtn
+			CBtn.MouseEnter:Connect(function() CBtnStroke.Thickness = 1 end)
+			CBtn.MouseLeave:Connect(function() CBtnStroke.Thickness = 0 end)
+			CBtn.MouseButton1Click:Connect(function()
+				cornerIdx = cornerIdx % #corners + 1
+				notifCorner = corners[cornerIdx]
+				CBtn.Text = notifCorner
+				updateNotifLayout()
+			end)
+			RegisterFlag("UI/NotifCorner",
+				function() return notifCorner end,
+				function(v)
+					for i, c in ipairs(corners) do
+						if c == v then cornerIdx = i; notifCorner = v; CBtn.Text = v; updateNotifLayout(); break end
+					end
+				end)
+
+			-- Anti-AFK
+			local VirtualUser = game:GetService("VirtualUser")
+			local afkConn
+			local AntiAfkRow = Instance.new("Frame")
+			AntiAfkRow.Parent = KeyContent; AntiAfkRow.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+			AntiAfkRow.Size = UDim2.new(1, 0, 0, 34); mkCorner(4, AntiAfkRow)
+			local AALbl = Instance.new("TextLabel")
+			AALbl.Parent = AntiAfkRow; AALbl.BackgroundTransparency = 1
+			AALbl.Position = UDim2.new(0, 8, 0, 0); AALbl.Size = UDim2.new(1, -58, 1, 0)
+			AALbl.Font = Enum.Font.Gotham; AALbl.Text = "Anti-AFK"
+			AALbl.TextColor3 = Color3.fromRGB(255, 255, 255); AALbl.TextSize = 12
+			AALbl.TextXAlignment = Enum.TextXAlignment.Left
+			local AABtn = Instance.new("TextButton")
+			AABtn.Parent = AntiAfkRow; AABtn.BackgroundTransparency = 1
+			AABtn.Position = UDim2.new(1, -50, 0.5, -11)
+			AABtn.Size = UDim2.new(0, 44, 0, 22); AABtn.Text = ""
+			local AABg = Instance.new("Frame")
+			AABg.Parent = AABtn; AABg.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+			AABg.Size = UDim2.new(1, 0, 1, 0); mkCorner(4, AABg)
+			local AAInd = Instance.new("Frame")
+			AAInd.Parent = AABg; AAInd.BackgroundColor3 = Color3.fromRGB(255, 81, 81)
+			AAInd.Position = UDim2.new(0, 4, 0.1, 0); AAInd.Size = UDim2.new(0, 16, 0.8, 0)
+			mkCorner(3, AAInd)
+			local aaState = false
+			local function setAntiAfk(enabled)
+				aaState = enabled
+				if enabled then
+					TweenService:Create(AAInd, TweenInfo.new(0.2), {Position = UDim2.new(0, 24, 0.1, 0), BackgroundColor3 = Color3.fromRGB(2, 255, 108)}):Play()
+					if afkConn then afkConn:Disconnect() end
+					afkConn = Players.LocalPlayer.Idled:Connect(function()
+						VirtualUser:CaptureController()
+						VirtualUser:ClickButton2(Vector2.new())
+						GUI:Notify("Anti-AFK", "Prevented AFK kick", 3)
+					end)
+				else
+					TweenService:Create(AAInd, TweenInfo.new(0.2), {Position = UDim2.new(0, 4, 0.1, 0), BackgroundColor3 = Color3.fromRGB(255, 81, 81)}):Play()
+					if afkConn then afkConn:Disconnect(); afkConn = nil end
+				end
+			end
+			AABtn.MouseButton1Click:Connect(function() setAntiAfk(not aaState) end)
+			RegisterFlag("UI/AntiAfk",
+				function() return aaState end,
+				function(v) setAntiAfk(v and true or false) end)
 		end
 
 		-- Saved configs list card
