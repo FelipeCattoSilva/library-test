@@ -139,7 +139,7 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		if _ttConn then _ttConn:Disconnect() end
 		_ttConn = RunService.RenderStepped:Connect(function()
 			local mp = UserInputService:GetMouseLocation()
-			Tooltip.Position = UDim2.new(0, mp.X + 14, 0, mp.Y + 6)
+			Tooltip.Position = UDim2.new(0, mp.X + 6, 0, mp.Y + 20)
 		end)
 	end
 	local function hideTooltip()
@@ -455,7 +455,6 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		Wrapper.BackgroundTransparency = 1
 		Wrapper.BorderSizePixel = 0
 		Wrapper.Size = UDim2.new(1, 0, 0, cardH)
-		Wrapper.ClipsDescendants = true
 
 		local Card = Instance.new("Frame")
 		Card.Parent = Wrapper
@@ -1510,38 +1509,62 @@ function Library:NewWindow(hubName, gameName, version, discord)
 					if ok and kc then toggleKey = kc; KBtn.Text = kc.Name end
 				end)
 
-			-- Notif corner
+			-- Notif corner dropdown
 			local corners = {"BottomRight", "BottomLeft", "TopRight", "TopLeft"}
-			local cornerIdx = 1
-			local CornerRow = Instance.new("Frame")
-			CornerRow.Parent = KeyContent; CornerRow.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
-			CornerRow.Size = UDim2.new(1, 0, 0, 34); mkCorner(4, CornerRow)
-			local CRLbl = Instance.new("TextLabel")
-			CRLbl.Parent = CornerRow; CRLbl.BackgroundTransparency = 1
-			CRLbl.Position = UDim2.new(0, 8, 0, 0); CRLbl.Size = UDim2.new(0.5, 0, 1, 0)
-			CRLbl.Font = Enum.Font.Gotham; CRLbl.Text = "Notif Corner"
-			CRLbl.TextColor3 = Color3.fromRGB(255, 255, 255); CRLbl.TextSize = 12
-			CRLbl.TextXAlignment = Enum.TextXAlignment.Left
-			local CBtn = Instance.new("TextButton")
-			CBtn.Parent = CornerRow; CBtn.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
-			CBtn.Position = UDim2.new(1, -114, 0.5, -11); CBtn.Size = UDim2.new(0, 108, 0, 22)
-			CBtn.Font = Enum.Font.Gotham; CBtn.Text = corners[cornerIdx]
-			CBtn.TextColor3 = Color3.fromRGB(255, 255, 255); CBtn.TextSize = 10
-			mkCorner(4, CBtn)
-			local CBtnStroke = Instance.new("UIStroke"); CBtnStroke.Color = Color3.fromRGB(102, 5, 172); CBtnStroke.Thickness = 0; CBtnStroke.Parent = CBtn
-			CBtn.MouseEnter:Connect(function() CBtnStroke.Thickness = 1 end)
-			CBtn.MouseLeave:Connect(function() CBtnStroke.Thickness = 0 end)
-			CBtn.MouseButton1Click:Connect(function()
-				cornerIdx = cornerIdx % #corners + 1
-				notifCorner = corners[cornerIdx]
-				CBtn.Text = notifCorner
-				updateNotifLayout()
-			end)
+			local cornerOpened = false
+			local CDrop = Instance.new("Frame")
+			CDrop.Parent = KeyContent; CDrop.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+			CDrop.Size = UDim2.new(1, 0, 0, 34); CDrop.ClipsDescendants = true; mkCorner(4, CDrop)
+			local CDLbl = Instance.new("TextLabel")
+			CDLbl.Parent = CDrop; CDLbl.BackgroundTransparency = 1
+			CDLbl.Position = UDim2.new(0, 8, 0, 0); CDLbl.Size = UDim2.new(0.55, 0, 0, 34)
+			CDLbl.Font = Enum.Font.Gotham; CDLbl.Text = "Notif Corner"
+			CDLbl.TextColor3 = Color3.fromRGB(255, 255, 255); CDLbl.TextSize = 12
+			CDLbl.TextXAlignment = Enum.TextXAlignment.Left
+			local CDSel = Instance.new("TextLabel")
+			CDSel.Parent = CDrop; CDSel.BackgroundTransparency = 1
+			CDSel.Position = UDim2.new(0.5, 0, 0, 0); CDSel.Size = UDim2.new(0.4, -28, 0, 34)
+			CDSel.Font = Enum.Font.Gotham; CDSel.Text = notifCorner
+			CDSel.TextColor3 = Color3.fromRGB(180, 180, 180); CDSel.TextSize = 11
+			CDSel.TextXAlignment = Enum.TextXAlignment.Right
+			local CDArrow = Instance.new("TextButton")
+			CDArrow.Parent = CDrop; CDArrow.BackgroundTransparency = 1
+			CDArrow.Position = UDim2.new(1, -28, 0, 0); CDArrow.Size = UDim2.new(0, 28, 0, 34)
+			CDArrow.Font = Enum.Font.SourceSans; CDArrow.Text = ">"
+			CDArrow.TextSize = 16; CDArrow.TextColor3 = Color3.fromRGB(255, 255, 255); CDArrow.Rotation = -90
+			local CDItems = Instance.new("Frame")
+			CDItems.Parent = CDrop; CDItems.BackgroundTransparency = 1
+			CDItems.Position = UDim2.new(0, 4, 0, 39); CDItems.Size = UDim2.new(1, -8, 0, 0)
+			CDItems.AutomaticSize = Enum.AutomaticSize.Y; CDItems.Visible = false
+			local CDIL = Instance.new("UIListLayout"); CDIL.Parent = CDItems
+			CDIL.Padding = UDim.new(0, 3); CDIL.SortOrder = Enum.SortOrder.LayoutOrder
+			local function toggleCornerDrop()
+				cornerOpened = not cornerOpened
+				local totalH = cornerOpened and (34 + 5 + #corners * 28 + math.max(0, #corners-1) * 3 + 6) or 34
+				CDrop:TweenSize(UDim2.new(1, 0, 0, totalH), "Out", "Quad", 0.2, true)
+				TweenService:Create(CDArrow, TweenInfo.new(0.2), {Rotation = cornerOpened and 90 or -90}):Play()
+				CDItems.Visible = cornerOpened
+			end
+			CDArrow.MouseButton1Click:Connect(toggleCornerDrop)
+			for _, corner in ipairs(corners) do
+				local IF = Instance.new("Frame")
+				IF.Parent = CDItems; IF.BackgroundColor3 = Color3.fromRGB(41, 41, 41)
+				IF.Size = UDim2.new(1, 0, 0, 28); mkCorner(4, IF)
+				local IS = Instance.new("UIStroke"); IS.Color = Color3.fromRGB(102, 5, 172); IS.Thickness = 1; IS.Parent = IF
+				local IB = Instance.new("TextButton")
+				IB.Parent = IF; IB.BackgroundTransparency = 1; IB.Size = UDim2.new(1, 0, 1, 0)
+				IB.Font = Enum.Font.Gotham; IB.Text = corner
+				IB.TextColor3 = Color3.fromRGB(255, 255, 255); IB.TextSize = 12
+				IB.MouseButton1Click:Connect(function()
+					notifCorner = corner; CDSel.Text = corner
+					updateNotifLayout(); toggleCornerDrop()
+				end)
+			end
 			RegisterFlag("UI/NotifCorner",
 				function() return notifCorner end,
 				function(v)
-					for i, c in ipairs(corners) do
-						if c == v then cornerIdx = i; notifCorner = v; CBtn.Text = v; updateNotifLayout(); break end
+					for _, c in ipairs(corners) do
+						if c == v then notifCorner = v; CDSel.Text = v; updateNotifLayout(); break end
 					end
 				end)
 
