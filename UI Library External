@@ -158,6 +158,7 @@ local SLIDER_H = 36
 
 -- ── shared manager (created lazily on first Window) ─────────────────────
 local M = nil
+local ensureConfig   -- forward decl: builds the pinned built-in Config window
 
 local function ensureManager()
     if M then return M end
@@ -166,7 +167,7 @@ local function ensureManager()
         visible  = true,
         menuKey  = strToVk("RightAlt") or Enum.KeyCode.RightAlt,
         menuWas  = false,
-        offX     = 0, offY = 0,
+        offX     = 0, offY = -25,   -- GetMouseLocation vs immediate.* space: Y off by -25 in this build
         notifs   = {},
         -- input
         mx = 0, my = 0, lmb = false, lmbPrev = false,
@@ -220,9 +221,33 @@ local function ensureManager()
     M.winHeight = winHeight
 
     -- ── draw one element. (x,y,w) span the window body column. ──────────
+    -- selected items of a multi-dropdown (as option strings)
+    local function multiSelected(e)
+        local out = {}
+        for i, opt in ipairs(e.options) do if e.sel[i] then out[#out + 1] = opt end end
+        return out
+    end
+    local function multiLabel(e)
+        local n = #multiSelected(e)
+        if n == 0 then return "None"
+        elseif n == #e.options and n > 0 then return "All"
+        elseif n == 1 then return multiSelected(e)[1]
+        else return n .. " selected" end
+    end
+
     local function drawElement(e, x, y, w, allowClick)
         local mx, my = M.mx, M.my
         local h = elemH(e)
+
+        -- accept a click only if allowed, hovered, and NOT under an open overlay
+        local function acc(px, py, pw, ph)
+            if not allowClick then return false end
+            if not pin(mx, my, px, py, pw, ph) then return false end
+            if M.blockRect and pin(mx, my, M.blockRect.x, M.blockRect.y, M.blockRect.w, M.blockRect.h) then
+                return false
+            end
+            return true
+        end
 
         if e.type == "section" then
             txt(x + PAD, y + h - 14, e.text, C.accent, FD_S)
@@ -242,7 +267,7 @@ local function ensureManager()
             fill(bx, by, bw, bh, C.panel, 4)
             stroke(bx, by, bw, bh, hov and C.accent or C.stroke, 4)
             ctxt(x + w / 2, by + bh / 2 - 7, e.text, C.text, FD_S)
-            if allowClick and hov then task.spawn(e.cb) end
+            if acc(bx, by, bw, bh) then task.spawn(e.cb) end
             return y + h
         end
 
@@ -259,7 +284,7 @@ local function ensureManager()
             else
                 stroke(bx, by, bs, bs, C.cbOff, 3)
             end
-            if allowClick and hov then e.val = not e.val; task.spawn(e.cb, e.val) end
+            if acc(x, y, w, h) then e.val = not e.val; task.spawn(e.cb, e.val) end
             return y + h
         end
 
@@ -273,7 +298,7 @@ local function ensureManager()
             fill(tx, ty, tw, th, C.track, 3)
             local ratio = math.clamp((e.val - e.min) / (e.max - e.min), 0, 1)
             if ratio > 0 then fill(tx, ty, math.floor(tw * ratio), th, C.accent, 3) end
-            if allowClick and pin(mx, my, tx, ty - 6, tw, th + 12) then M.dragSlider = e end
+            if acc(tx, ty - 6, tw, th + 12) then M.dragSlider = e end
             if M.dragSlider == e and M.lmb then
                 local r = math.clamp((mx - tx) / tw, 0, 1)
                 local nv = e.min + r * (e.max - e.min)
@@ -296,8 +321,30 @@ local function ensureManager()
             local cur = e.options[e.val] or "—"
             txt(bx + 7, by + 3, tostring(cur), C.text, FD_S)
             txt(bx + bw - 13, by + 3, isOpen and "^" or "v", C.text, FD_S)
-            if allowClick and pin(mx, my, bx, by, bw, 18) then M.ddOpen = isOpen and nil or e end
-            if isOpen then M.pendingDD = { e = e, x = bx, y = by + 19, w = bw } end
+            if acc(bx, by, bw, 18) then M.ddOpen = isOpen and nil or e end
+            if isOpen then
+                M.pendingDD = { e = e, x = bx, y = by + 19, w = bw }
+                e._ovl = { x = bx, y = by + 19, w = bw, h = #e.options * 18 + 2 }
+            end
+            return y + h
+        end
+
+        if e.type == "multi" then
+            local hov = pin(mx, my, x, y, w, h)
+            if hov then fill(x, y, w, h, C.rowHov, 0) end
+            txt(x + PAD, y + h / 2 - 7, e.text, C.text, FD)
+            local bw = 100
+            local bx, by = x + w - PAD - bw, y + h / 2 - 9
+            local isOpen = (M.ddOpen == e)
+            fill(bx, by, bw, 18, C.input, 4)
+            stroke(bx, by, bw, 18, isOpen and C.accent or C.stroke, 4)
+            txt(bx + 7, by + 3, multiLabel(e), C.text, FD_S)
+            txt(bx + bw - 13, by + 3, isOpen and "^" or "v", C.text, FD_S)
+            if acc(bx, by, bw, 18) then M.ddOpen = isOpen and nil or e end
+            if isOpen then
+                M.pendingDD = { e = e, x = bx, y = by + 19, w = bw }
+                e._ovl = { x = bx, y = by + 19, w = bw, h = #e.options * 18 + 2 }
+            end
             return y + h
         end
 
@@ -306,13 +353,14 @@ local function ensureManager()
             if hov then fill(x, y, w, h, C.rowHov, 0) end
             txt(x + PAD, y + h / 2 - 7, e.text, C.text, FD)
             local listen = (M.kbListen == e)
-            local s = listen and "..." or ("[ " .. tostring(e.val) .. " ]")
+            local cur = e.bindMenu and vkToStr(M.menuKey) or tostring(e.val)
+            local s = listen and "..." or ("[ " .. cur .. " ]")
             local bw = math.max(58, measure(s, FD_S) + 18)
             local bx, by = x + w - PAD - bw, y + h / 2 - 9
             fill(bx, by, bw, 18, C.input, 4)
             stroke(bx, by, bw, 18, listen and C.accent or C.stroke, 4)
             ctxt(bx + bw / 2, by + 3, s, listen and C.accent or C.text, FD_S)
-            if allowClick and pin(mx, my, bx, by, bw, 18) then M.kbListen = listen and nil or e end
+            if acc(bx, by, bw, 18) then M.kbListen = listen and nil or e end
             return y + h
         end
 
@@ -330,7 +378,7 @@ local function ensureManager()
             if focused then shown = e.val .. "|"; tcol = C.text end
             local sw = measure(shown, FD_S)
             txt(bx + bw - 6 - sw, by + 3, shown, tcol, FD_S)   -- right-aligned
-            if allowClick and pin(mx, my, bx, by, bw, 18) then M.boxFocus = focused and nil or e end
+            if acc(bx, by, bw, 18) then M.boxFocus = focused and nil or e end
             return y + h
         end
 
@@ -360,6 +408,26 @@ local function ensureManager()
         local hgt = #e.options * rowH + 2
         fill(x, y, w, hgt, C.panel, 4)
         stroke(x, y, w, hgt, C.stroke, 4)
+
+        if e.type == "multi" then
+            for i, item in ipairs(e.options) do
+                local iy  = y + 1 + (i - 1) * rowH
+                local hov = pin(mx, my, x, iy, w, rowH)
+                local on  = e.sel[i]
+                if hov then fill(x + 1, iy, w - 2, rowH, C.rowHov, 0) end
+                local bs, cbx, cby = 10, x + 7, iy + rowH / 2 - 5
+                if on then fill(cbx, cby, bs, bs, C.accent, 2)
+                else stroke(cbx, cby, bs, bs, C.cbOff, 2) end
+                txt(cbx + bs + 6, iy + 3, tostring(item), on and C.text or C.dim, FD_S)
+                if click and hov then
+                    e.sel[i] = (not e.sel[i]) or nil      -- toggle, stays open
+                    task.spawn(e.cb, multiSelected(e))
+                end
+            end
+            if click and not pin(mx, my, x, y, w, hgt) then M.ddOpen = nil end
+            return
+        end
+
         for i, item in ipairs(e.options) do
             local iy  = y + 1 + (i - 1) * rowH
             local hov = pin(mx, my, x, iy, w, rowH)
@@ -450,13 +518,20 @@ local function ensureManager()
 
         if M.kbListen then
             for _, kc in ipairs(ALL_KC) do
-                if vkDown(kc) then M.kbListen.val = vkToStr(kc); M.kbListen._was = true; M.kbListen = nil; break end
+                if vkDown(kc) then
+                    if M.kbListen.bindMenu then
+                        M.menuKey = kc; M.menuWas = true   -- don't fire toggle until released
+                    else
+                        M.kbListen.val = vkToStr(kc); M.kbListen._was = true
+                    end
+                    M.kbListen = nil; break
+                end
             end
         end
 
         for _, win in ipairs(M.windows) do
             for _, e in ipairs(win.elems) do
-                if e.type == "keybind" and e ~= M.kbListen then
+                if e.type == "keybind" and e ~= M.kbListen and not e.bindMenu then
                     local down = vkDown(strToVk(e.val))
                     if down and not e._was then task.spawn(e.cb) end
                     e._was = down
@@ -487,11 +562,30 @@ local function ensureManager()
     -- ── draw loop (PreRender) ───────────────────────────────────────────
     RunService.PreRender:Connect(function()
         drawNotifs()
+        ensureConfig()
+        -- pin the built-in Config window to the far right of all user windows (once)
+        if not M.configPlaced and #M.windows > 1 then
+            local maxRight, topY
+            for _, win in ipairs(M.windows) do
+                if not win._config then
+                    local r = win.x + win.width
+                    if not maxRight or r > maxRight then maxRight = r end
+                    if not topY or win.y < topY then topY = win.y end
+                end
+            end
+            if maxRight then M.config.x = maxRight + 16; M.config.y = topY or 24; M.configPlaced = true end
+        end
         if not M.visible then return end
 
         local mx, my = M.mx, M.my
         local click = M.lmb and not M.lmbPrev
         M.pendingDD = nil
+
+        -- region of the currently open dropdown/multi overlay (clicks here are
+        -- owned by the overlay, never by the elements/windows behind it).
+        M.blockRect = (M.ddOpen and M.ddOpen._ovl) or nil
+        local overlayClick = click and M.blockRect
+            and pin(mx, my, M.blockRect.x, M.blockRect.y, M.blockRect.w, M.blockRect.h)
 
         -- measure window bounds for hit-testing this frame
         for _, win in ipairs(M.windows) do
@@ -500,7 +594,7 @@ local function ensureManager()
 
         -- determine the front-most window under the cursor (click owner)
         local clickWin = nil
-        if click then
+        if click and not overlayClick then
             for i = #M.windows, 1, -1 do
                 local win = M.windows[i]
                 if pin(mx, my, win.x, win.y, win._w, win._h) then clickWin = win; break end
@@ -542,7 +636,14 @@ end
 ----------------------------------------------------------------------
 local function makeHandle(e)
     local h = {}
-    function h:Get() return e.val end
+    function h:Get()
+        if e.type == "multi" then
+            local out = {}
+            for i, opt in ipairs(e.options) do if e.sel[i] then out[#out + 1] = opt end end
+            return out
+        end
+        return e.val
+    end
     function h:Set(v) e.val = v end
     function h:SetText(s) e.text = s end
     function h:Options(items) e.options = items or {}; e.val = 1 end
@@ -588,10 +689,23 @@ function Library:Window(opts)
         return push({ type = "dropdown", text = o.text or "Dropdown", options = o.options or {},
                       val = o.default or 1, cb = o.callback or function() end })
     end
+    function W:MultiDropdown(o)
+        o = o or {}
+        local options = o.options or {}
+        local sel = {}
+        if o.default then
+            for _, d in ipairs(o.default) do
+                if type(d) == "number" then sel[d] = true
+                else for i, opt in ipairs(options) do if opt == d then sel[i] = true end end end
+            end
+        end
+        return push({ type = "multi", text = o.text or "Dropdown", options = options,
+                      sel = sel, cb = o.callback or function() end })
+    end
     function W:Keybind(o)
         o = o or {}
         return push({ type = "keybind", text = o.text or "Keybind", val = o.default or "None",
-                      cb = o.callback or function() end, _was = false })
+                      cb = o.callback or function() end, _was = false, bindMenu = o.bindMenu })
     end
     function W:Box(o)
         o = o or {}
@@ -612,6 +726,24 @@ end
 
 -- alias
 Library.CreateWindow = Library.Window
+
+-- Built-in Config window: pinned far-right, holds the menu toggle keybind and
+-- credits. Returns its builder so more can be added later via Library:Config().
+ensureConfig = function()
+    local m = ensureManager()
+    if m.config then return m.configW end
+    local W = Library:Window({ title = "Config", client = "", x = 24, y = 24, width = 200 })
+    local win = m.windows[#m.windows]
+    win._config = true
+    m.config, m.configW = win, W
+    W:Section("MENU")
+    W:Keybind({ text = "Toggle Menu", bindMenu = true })
+    W:Section("CREDITS")
+    W:Label({ text = "Troll" })
+    return W
+end
+
+function Library:Config() return ensureConfig() end
 
 function Library:SetToggleKey(key)
     local m = ensureManager()
