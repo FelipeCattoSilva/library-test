@@ -517,16 +517,28 @@ local function ensureManager()
         M.menuWas = mkNow
 
         if M.kbListen then
+            -- when listening just started, ignore keys already held (e.g. the M1
+            -- click that opened the bind) until released, so they aren't captured.
+            if M.kbListen ~= M._kbArmed then
+                M._kbArmed = M.kbListen
+                M._kbIgnore = {}
+                for _, kc in ipairs(ALL_KC) do if vkDown(kc) then M._kbIgnore[kc] = true end end
+            end
             for _, kc in ipairs(ALL_KC) do
-                if vkDown(kc) then
+                local down = vkDown(kc)
+                if not down then M._kbIgnore[kc] = nil end     -- released -> now bindable
+                if down and not M._kbIgnore[kc] then
                     if M.kbListen.bindMenu then
-                        M.menuKey = kc; M.menuWas = true   -- don't fire toggle until released
+                        M.menuKey = kc; M.menuWas = true       -- don't fire toggle until released
                     else
                         M.kbListen.val = vkToStr(kc); M.kbListen._was = true
                     end
-                    M.kbListen = nil; break
+                    M.kbListen, M._kbArmed = nil, nil
+                    break
                 end
             end
+        else
+            M._kbArmed = nil
         end
 
         for _, win in ipairs(M.windows) do
