@@ -1,0 +1,630 @@
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+----------------------------------------------------------------------
+-- FONTS / MEASURE
+----------------------------------------------------------------------
+local FD   = font.get_font_descriptor("Arial", 14)
+local FD_S = font.get_font_descriptor("Arial", 12)
+local FD_T = font.get_font_descriptor("Arial", 15)
+
+local function measure(t, fd)
+    local ok, v = pcall(immediate.calculate_text_size, t, fd)
+    if ok and v then return v.X, v.Y end
+    local w = (fd == FD_S) and 7 or 8
+    return #t * w, (fd == FD_S) and 12 or 14
+end
+
+----------------------------------------------------------------------
+-- KEY MAPS (keybind capture/display + menu toggle + box typing)
+----------------------------------------------------------------------
+local VK_NAMES = {
+    [Enum.KeyCode.LeftButton]="M1", [Enum.KeyCode.RightButton]="M2",
+    [Enum.KeyCode.MiddleButton]="M3", [Enum.KeyCode.LeftShift]="Shift",
+    [Enum.KeyCode.LeftControl]="Ctrl", [Enum.KeyCode.LeftAlt]="Alt",
+    [Enum.KeyCode.Space]="Space", [Enum.KeyCode.Tab]="Tab",
+    [Enum.KeyCode.Return]="Enter", [Enum.KeyCode.Backspace]="Back",
+}
+do
+    local okRA, ra = pcall(function() return Enum.KeyCode.RightAlt end)
+    if okRA and ra then VK_NAMES[ra] = "RightAlt" end
+    local okRC, rc = pcall(function() return Enum.KeyCode.RightControl end)
+    if okRC and rc then VK_NAMES[rc] = "RightControl" end
+    for i = 0, 25 do VK_NAMES[Enum.KeyCode[string.char(65 + i)]] = string.char(65 + i) end
+    local dig = {"Zero","One","Two","Three","Four","Five","Six","Seven","Eight","Nine"}
+    for i, n in ipairs(dig) do VK_NAMES[Enum.KeyCode[n]] = tostring(i - 1) end
+    for _, f in ipairs({"F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12"}) do
+        VK_NAMES[Enum.KeyCode[f]] = f
+    end
+end
+local VK_BY_NAME, ALL_KC = {}, {}
+for kc, nm in pairs(VK_NAMES) do VK_BY_NAME[nm:upper()] = kc; ALL_KC[#ALL_KC + 1] = kc end
+local function vkToStr(kc) return kc and VK_NAMES[kc] or "None" end
+local function strToVk(s) return s and VK_BY_NAME[tostring(s):upper()] or nil end
+local function isMouseVk(kc)
+    return kc == Enum.KeyCode.LeftButton or kc == Enum.KeyCode.RightButton or kc == Enum.KeyCode.MiddleButton
+end
+local function vkDown(kc)
+    if not kc then return false end
+    if isMouseVk(kc) then return UserInputService:IsMouseButtonPressed(kc) end
+    return UserInputService:IsKeyDown(kc)
+end
+
+local SHIFT_DIGIT = {["1"]="!",["2"]="@",["3"]="#",["4"]="$",["5"]="%",["6"]="^",["7"]="&",["8"]="*",["9"]="(",["0"]=")"}
+local PUNCT = {}
+do
+    local defs = { Minus={"-","_"}, Equals={"=","+"}, Period={".",">"}, Comma={",","<"},
+                   Slash={"/","?"}, Semicolon={";",":"} }
+    for name, pair in pairs(defs) do
+        local ok, kc = pcall(function() return Enum.KeyCode[name] end)
+        if ok and kc then PUNCT[kc] = pair end
+    end
+end
+local function charFor(kc, shift)
+    local nm = VK_NAMES[kc]
+    if nm and #nm == 1 then
+        if nm:match("%a") then return shift and nm:upper() or nm:lower() end
+        if nm:match("%d") then return shift and SHIFT_DIGIT[nm] or nm end
+    end
+    local p = PUNCT[kc]; if p then return shift and p[2] or p[1] end
+    return nil
+end
+
+local function pin(mx, my, x, y, w, h)
+    return mx >= x and mx <= x + w and my >= y and my <= y + h
+end
+
+----------------------------------------------------------------------
+-- LIBRARY
+----------------------------------------------------------------------
+local Library = {}
+
+function Library:CreateWindow(opts)
+    opts = opts or {}
+
+    -- ── theme ───────────────────────────────────────────────────────────
+    local function c4(r, g, b, a) return Color4.new(r, g, b, a or 1) end
+    local A = opts.accent or { 0.780, 0.251, 1.000 }   -- magenta rgb(199,64,255)
+    local C = {
+        accent    = c4(A[1], A[2], A[3], 1),
+        accentDim = c4(A[1], A[2], A[3], 0.16),
+        panel     = c4(0.055, 0.055, 0.071, 0.98),
+        panel2    = c4(0.071, 0.071, 0.094, 1),
+        stroke    = c4(0.133, 0.133, 0.165, 1),
+        rowHov    = c4(0.105, 0.105, 0.130, 1),
+        input     = c4(0.102, 0.102, 0.125, 1),
+        track     = c4(0.165, 0.165, 0.196, 1),
+        cbOff     = c4(0.333, 0.333, 0.373, 1),
+        text      = c4(0.882, 0.882, 0.910, 1),
+        white     = c4(1, 1, 1, 1),
+        dim       = c4(0.471, 0.471, 0.518, 1),
+        mono      = c4(0.353, 0.353, 0.392, 1),
+        black     = c4(0, 0, 0, 1),
+    }
+
+    -- ── layout ──────────────────────────────────────────────────────────
+    local WIN       = { x = opts.x or 60, y = opts.y or 90 }
+    local WIN_W     = opts.width or 430
+    local TITLE_H   = 38
+    local CONTENT_H = opts.height or 360
+    local SIDEBAR_W = 120
+    local PAD       = 12
+    local ROW_H     = 26
+    local SEC_H     = 26
+    local BTN_H     = 30
+    local SLIDER_H  = 40
+    local TAB_H     = 30
+
+    -- ── window state ────────────────────────────────────────────────────
+    local st = {
+        open      = true,
+        minimized = false,
+        activeTab = 1,
+        menuKey   = opts.menuKey or (strToVk("RightAlt") or Enum.KeyCode.RightAlt),
+        menuWas   = false,
+    }
+    local tabs   = {}
+    local notifs = {}
+    local footer = opts.footer   -- optional {"line1","line2"} mono status text
+
+    -- shared input state
+    local mx, my         = 0, 0
+    local lmb, lmbPrev   = false, false
+    local dragWin        = false
+    local dragOX, dragOY = 0, 0
+    local dragSlider     = nil
+    local ddOpen         = nil
+    local kbListen       = nil
+    local boxFocus       = nil
+    local pendingDD      = nil
+
+    local Win = {}
+
+    ----------------------------------------------------------------------
+    -- PRIMITIVES
+    ----------------------------------------------------------------------
+    local function fill(x, y, w, h, col, r)
+        immediate.rectangle(Vector2.new(x, y), Vector2.new(x + w, y + h), r or 0, true, false, col)
+    end
+    local function stroke(x, y, w, h, col, r)
+        immediate.rectangle(Vector2.new(x, y), Vector2.new(x + w, y + h), r or 0, false, true, col)
+    end
+    local function txt(x, y, t, col, fd)
+        immediate.text(Vector2.new(x, y), t, fd or FD, false, col or C.text)
+    end
+    local function ctxt(cx, y, t, col, fd)
+        local tw = measure(t, fd or FD)
+        immediate.text(Vector2.new(cx - tw / 2, y), t, fd or FD, false, col or C.text)
+    end
+    local function line(x1, y1, x2, y2, col, th)
+        local ok = pcall(function()
+            immediate.line(Vector2.new(x1, y1), Vector2.new(x2, y2), th or 1.4, false, col)
+        end)
+        if not ok then
+            pcall(function()
+                immediate.line(Vector2.new(x1, y1), Vector2.new(x2, y2), th or 1.4, col)
+            end)
+        end
+    end
+    local function circ(cx, cy, r, col, filled)
+        immediate.circle(Vector2.new(cx, cy), r, filled ~= false, false, col)
+    end
+
+    ----------------------------------------------------------------------
+    -- TAB ICONS (14px cell, stroked vector glyphs)
+    ----------------------------------------------------------------------
+    local function icon(name, x, y, col)
+        if name == "home" then
+            line(x + 1, y + 7, x + 7, y + 1, col); line(x + 7, y + 1, x + 13, y + 7, col)
+            line(x + 2.5, y + 6, x + 2.5, y + 13, col); line(x + 11.5, y + 6, x + 11.5, y + 13, col)
+            line(x + 2.5, y + 13, x + 11.5, y + 13, col)
+        elseif name == "sword" then
+            line(x + 11, y + 2, x + 5, y + 8, col)
+            line(x + 11, y + 2, x + 8, y + 2, col); line(x + 11, y + 2, x + 11, y + 5, col)
+            line(x + 2, y + 12, x + 5, y + 9, col); line(x + 3, y + 11, x + 5, y + 13, col)
+        elseif name == "eye" then
+            circ(x + 7, y + 7, 5.5, col, false); circ(x + 7, y + 7, 2, col, false)
+        elseif name == "user" then
+            circ(x + 7, y + 4.5, 2.5, col, false)
+            line(x + 2, y + 13, x + 4, y + 9.5, col); line(x + 4, y + 9.5, x + 10, y + 9.5, col)
+            line(x + 10, y + 9.5, x + 12, y + 13, col)
+        elseif name == "grid" then
+            stroke(x + 1, y + 1, 5, 5, col, 1); stroke(x + 8, y + 1, 5, 5, col, 1)
+            stroke(x + 1, y + 8, 5, 5, col, 1); stroke(x + 8, y + 8, 5, 5, col, 1)
+        elseif name == "gear" then
+            circ(x + 7, y + 7, 2.6, col, false)
+            line(x + 7, y + 1, x + 7, y + 3, col);  line(x + 7, y + 11, x + 7, y + 13, col)
+            line(x + 1, y + 7, x + 3, y + 7, col);  line(x + 11, y + 7, x + 13, y + 7, col)
+            line(x + 3, y + 3, x + 4.5, y + 4.5, col); line(x + 9.5, y + 9.5, x + 11, y + 11, col)
+            line(x + 11, y + 3, x + 9.5, y + 4.5, col); line(x + 4.5, y + 9.5, x + 3, y + 11, col)
+        else
+            stroke(x + 2, y + 2, 10, 10, col, 2)
+        end
+    end
+
+    ----------------------------------------------------------------------
+    -- BUILDERS
+    ----------------------------------------------------------------------
+    local function makeHandle(e)
+        local h = {}
+        function h:Get() return e.val end
+        function h:Set(v) e.val = v end
+        function h:SetText(s) e.text = s end
+        function h:Options(items) e.options = items or {}; e.val = 1 end
+        return h
+    end
+
+    function Win:Tab(name, iconName)
+        local tab = { name = name or ("Tab " .. (#tabs + 1)), icon = iconName,
+                      elems = {}, scroll = 0, maxScroll = 0 }
+        tabs[#tabs + 1] = tab
+        local T = {}
+        local function push(e) tab.elems[#tab.elems + 1] = e; return makeHandle(e) end
+
+        function T:Section(text) return push({ type = "section", text = text or "SECTION" }) end
+        function T:Label(o)
+            o = o or {}; return push({ type = "label", text = o.text or "", get = o.get })
+        end
+        function T:Button(o)
+            o = o or {}
+            return push({ type = "button", text = o.text or "Button", cb = o.callback or function() end })
+        end
+        function T:Toggle(o)
+            o = o or {}
+            return push({ type = "toggle", text = o.text or "Toggle", val = o.default and true or false,
+                          cb = o.callback or function() end })
+        end
+        function T:Slider(o)
+            o = o or {}
+            local mn, mxv = o.min or 0, o.max or 100
+            return push({ type = "slider", text = o.text or "Slider", min = mn, max = mxv,
+                          val = math.clamp(o.default or mn, mn, mxv), dec = o.decimals or 0,
+                          cb = o.callback or function() end })
+        end
+        function T:Dropdown(o)
+            o = o or {}
+            return push({ type = "dropdown", text = o.text or "Dropdown", options = o.options or {},
+                          val = o.default or 1, cb = o.callback or function() end })
+        end
+        function T:Keybind(o)
+            o = o or {}
+            return push({ type = "keybind", text = o.text or "Keybind", val = o.default or "None",
+                          cb = o.callback or function() end, _was = false })
+        end
+        function T:Box(o)
+            o = o or {}
+            return push({ type = "box", text = o.text or "Box", val = o.default or "",
+                          placeholder = o.placeholder or "...", cb = o.callback or function() end })
+        end
+        function T:Color(o)
+            o = o or {}
+            local cc = o.color or { A[1], A[2], A[3] }
+            return push({ type = "color", text = o.text or "Color", color = c4(cc[1], cc[2], cc[3], 1) })
+        end
+        return T
+    end
+
+    function Win:Notify(title, body, dur)
+        dur = dur or 3
+        notifs[#notifs + 1] = { title = title or "Notice", body = (body ~= "" and body) or nil,
+                                expire = os.clock() + dur, dur = dur }
+    end
+    function Win:Toggle() st.open = not st.open end
+    function Win:SetMenuKey(name) local kc = strToVk(name); if kc then st.menuKey = kc end end
+
+    ----------------------------------------------------------------------
+    -- ELEMENT METRICS
+    ----------------------------------------------------------------------
+    local function elemH(e)
+        if e.type == "section" then return SEC_H
+        elseif e.type == "label"  then return 18
+        elseif e.type == "button" then return BTN_H
+        elseif e.type == "slider" then return SLIDER_H
+        else return ROW_H end
+    end
+
+    ----------------------------------------------------------------------
+    -- DRAW ONE ELEMENT  (returns next y). x,w span the content column.
+    ----------------------------------------------------------------------
+    local function drawElement(e, x, y, w, click)
+        local h = elemH(e)
+
+        if e.type == "section" then
+            txt(x + PAD, y + h - 12, e.text, C.accent, FD_S)
+            return y + h
+        end
+
+        if e.type == "label" then
+            local s = e.text
+            if e.get then local ok, v = pcall(e.get); if ok and v then s = v end end
+            txt(x + PAD, y + 2, tostring(s or ""), C.dim, FD_S)
+            return y + h
+        end
+
+        if e.type == "button" then
+            local bx, by, bw, bh = x + PAD, y + 4, w - PAD * 2, BTN_H - 10
+            local hov = pin(mx, my, bx, by, bw, bh)
+            fill(bx, by, bw, bh, C.panel2, 4)
+            stroke(bx, by, bw, bh, hov and C.accent or C.stroke, 4)
+            ctxt(x + w / 2, by + bh / 2 - 7, e.text, C.text, FD_S)
+            if click and hov then task.spawn(e.cb) end
+            return y + h
+        end
+
+        if e.type == "toggle" then
+            local hov = pin(mx, my, x, y, w, h)
+            if e.val then fill(x, y, w, h, C.accentDim, 0) end
+            txt(x + PAD, y + h / 2 - 7, e.text, C.text, FD)
+            local bs = 14
+            local bx, by = x + w - PAD - bs, y + h / 2 - bs / 2
+            fill(bx, by, bs, bs, e.val and C.accent or C.input, 3)
+            stroke(bx, by, bs, bs, e.val and C.accent or C.cbOff, 3)
+            if e.val then
+                line(bx + 3, by + 7.5, bx + 6, by + 10.5, C.black, 1.8)
+                line(bx + 6, by + 10.5, bx + 11, by + 4, C.black, 1.8)
+            end
+            if click and hov then e.val = not e.val; task.spawn(e.cb, e.val) end
+            return y + h
+        end
+
+        if e.type == "slider" then
+            local vstr = (e.dec > 0) and string.format("%." .. e.dec .. "f", e.val)
+                                      or tostring(math.floor(e.val + 0.5))
+            txt(x + PAD, y + 4, e.text, C.text, FD_S)
+            local vw = measure(vstr, FD_S)
+            txt(x + w - PAD - vw, y + 4, vstr, C.accent, FD_S)
+            local tx, ty, tw, th = x + PAD, y + 24, w - PAD * 2, 5
+            fill(tx, ty, tw, th, C.track, 3)
+            local ratio = math.clamp((e.val - e.min) / (e.max - e.min), 0, 1)
+            if ratio > 0 then fill(tx, ty, math.floor(tw * ratio), th, C.accent, 3) end
+            local kx = tx + tw * ratio
+            circ(kx, ty + th / 2, 7, C.accentDim, true)
+            circ(kx, ty + th / 2, 5, C.accent, true)
+            if click and pin(mx, my, tx, ty - 6, tw, th + 12) then dragSlider = e end
+            if dragSlider == e and lmb then
+                local r = math.clamp((mx - tx) / tw, 0, 1)
+                local nv = e.min + r * (e.max - e.min)
+                if e.dec == 0 then nv = math.floor(nv + 0.5)
+                else local m = 10 ^ e.dec; nv = math.floor(nv * m + 0.5) / m end
+                if nv ~= e.val then e.val = nv; task.spawn(e.cb, nv) end
+            end
+            return y + h
+        end
+
+        if e.type == "dropdown" then
+            local hov = pin(mx, my, x, y, w, h)
+            if hov then fill(x, y, w, h, C.rowHov, 0) end
+            txt(x + PAD, y + h / 2 - 7, e.text, C.text, FD)
+            local bw = 96
+            local bx, by = x + w - PAD - bw, y + h / 2 - 9
+            local isOpen = (ddOpen == e)
+            fill(bx, by, bw, 18, C.input, 4)
+            stroke(bx, by, bw, 18, isOpen and C.accent or C.stroke, 4)
+            local cur = e.options[e.val] or "—"
+            txt(bx + 7, by + 3, tostring(cur), C.text, FD_S)
+            txt(bx + bw - 13, by + 3, isOpen and "^" or "v", C.accent, FD_S)
+            if click and pin(mx, my, bx, by, bw, 18) then ddOpen = isOpen and nil or e end
+            if isOpen then pendingDD = { e = e, x = bx, y = by + 19, w = bw } end
+            return y + h
+        end
+
+        if e.type == "keybind" then
+            local hov = pin(mx, my, x, y, w, h)
+            if hov then fill(x, y, w, h, C.rowHov, 0) end
+            txt(x + PAD, y + h / 2 - 7, e.text, C.text, FD)
+            local listen = (kbListen == e)
+            local s = listen and "..." or ("[ " .. tostring(e.val) .. " ]")
+            local bw = math.max(58, measure(s, FD_S) + 16)
+            local bx, by = x + w - PAD - bw, y + h / 2 - 9
+            fill(bx, by, bw, 18, C.input, 4)
+            stroke(bx, by, bw, 18, listen and C.accent or C.stroke, 4)
+            ctxt(bx + bw / 2, by + 3, s, listen and C.accent or C.text, FD_S)
+            if click and pin(mx, my, bx, by, bw, 18) then kbListen = listen and nil or e end
+            return y + h
+        end
+
+        if e.type == "box" then
+            local hov = pin(mx, my, x, y, w, h)
+            if hov then fill(x, y, w, h, C.rowHov, 0) end
+            txt(x + PAD, y + h / 2 - 7, e.text, C.text, FD)
+            local bw = 110
+            local bx, by = x + w - PAD - bw, y + h / 2 - 9
+            local focused = (boxFocus == e)
+            fill(bx, by, bw, 18, C.input, 4)
+            stroke(bx, by, bw, 18, focused and C.accent or C.stroke, 4)
+            local shown = (e.val ~= "" and e.val) or e.placeholder
+            local tcol  = (e.val ~= "") and C.text or C.dim
+            if focused then shown = e.val .. "|"; tcol = C.text end
+            txt(bx + 6, by + 3, shown, tcol, FD_S)
+            if click and pin(mx, my, bx, by, bw, 18) then boxFocus = focused and nil or e end
+            return y + h
+        end
+
+        if e.type == "color" then
+            txt(x + PAD, y + h / 2 - 7, e.text, C.text, FD)
+            local sw, sh = 28, 16
+            local sx, sy = x + w - PAD - sw, y + h / 2 - sh / 2
+            fill(sx, sy, sw, sh, e.color, 3)
+            stroke(sx, sy, sw, sh, C.stroke, 3)
+            return y + h
+        end
+
+        return y + h
+    end
+
+    -- dropdown overlay, drawn last so it sits on top
+    local function drawDropdown(dd, click)
+        local e, x, y, w = dd.e, dd.x, dd.y, dd.w
+        local rowH = 18
+        local hgt = #e.options * rowH + 2
+        fill(x, y, w, hgt, C.panel2, 4)
+        stroke(x, y, w, hgt, C.stroke, 4)
+        for i, item in ipairs(e.options) do
+            local iy  = y + 1 + (i - 1) * rowH
+            local hov = pin(mx, my, x, iy, w, rowH)
+            if e.val == i then fill(x + 1, iy, w - 2, rowH, C.accent, 0)
+            elseif hov     then fill(x + 1, iy, w - 2, rowH, C.rowHov, 0) end
+            txt(x + 7, iy + 3, tostring(item), e.val == i and C.black or C.text, FD_S)
+            if click and hov then e.val = i; ddOpen = nil; task.spawn(e.cb, i, item) end
+        end
+        if click and not pin(mx, my, x, y, w, hgt) then ddOpen = nil end
+    end
+
+    ----------------------------------------------------------------------
+    -- NOTIFICATIONS (anchored right of the window)
+    ----------------------------------------------------------------------
+    local function drawNotifs()
+        local now = os.clock()
+        for i = #notifs, 1, -1 do if notifs[i].expire <= now then table.remove(notifs, i) end end
+        local nx = WIN.x + WIN_W + 10
+        local ny = WIN.y
+        for _, n in ipairs(notifs) do
+            local hgt = n.body and 46 or 30
+            fill(nx, ny, 220, hgt, C.panel2, 4)
+            stroke(nx, ny, 220, hgt, C.stroke, 4)
+            fill(nx, ny, 3, hgt, C.accent, 0)
+            txt(nx + 12, ny + 6, n.title, C.text, FD_S)
+            if n.body then txt(nx + 12, ny + 22, n.body, C.dim, FD_S) end
+            local pr = math.clamp((n.expire - now) / n.dur, 0, 1)
+            fill(nx + 8, ny + hgt - 5, (220 - 16) * pr, 2, C.accent, 0)
+            ny = ny + hgt + 8
+        end
+    end
+
+    ----------------------------------------------------------------------
+    -- INPUT LOOP (Heartbeat)
+    ----------------------------------------------------------------------
+    RunService.Heartbeat:Connect(function()
+        local ml = UserInputService:GetMouseLocation()
+        mx, my = ml.X + (opts.mouseOffsetX or 0), ml.Y + (opts.mouseOffsetY or 0)
+        lmbPrev = lmb
+        lmb = UserInputService:IsMouseButtonPressed(Enum.KeyCode.LeftButton)
+        if not lmb then dragSlider = nil; dragWin = false end
+
+        local mkNow = vkDown(st.menuKey)
+        if mkNow and not st.menuWas then
+            st.open = not st.open
+            if not st.open then ddOpen = nil; kbListen = nil; boxFocus = nil; dragSlider = nil end
+        end
+        st.menuWas = mkNow
+
+        if kbListen then
+            for _, kc in ipairs(ALL_KC) do
+                if vkDown(kc) then kbListen.val = vkToStr(kc); kbListen._was = true; kbListen = nil; break end
+            end
+        end
+
+        for _, tab in ipairs(tabs) do
+            for _, e in ipairs(tab.elems) do
+                if e.type == "keybind" and e ~= kbListen then
+                    local down = vkDown(strToVk(e.val))
+                    if down and not e._was then task.spawn(e.cb) end
+                    e._was = down
+                end
+            end
+        end
+    end)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if not boxFocus then return end
+        if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+        local kc, e = input.KeyCode, boxFocus
+        if kc == Enum.KeyCode.Backspace then
+            e.val = e.val:sub(1, -2)
+        elseif kc == Enum.KeyCode.Return or kc == Enum.KeyCode.Escape then
+            boxFocus = nil; task.spawn(e.cb, e.val)
+        elseif kc == Enum.KeyCode.Space then
+            e.val = e.val .. " "
+        else
+            local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+                       or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+            local ch = charFor(kc, shift)
+            if ch then e.val = e.val .. ch end
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
+        if st.minimized or not st.open then return end
+        local cx, cy = WIN.x + SIDEBAR_W, WIN.y + TITLE_H
+        if not pin(mx, my, cx, cy, WIN_W - SIDEBAR_W, CONTENT_H) then return end
+        local tab = tabs[st.activeTab]
+        if not tab then return end
+        tab.scroll = math.clamp(tab.scroll - input.Position.Z * 34, 0, tab.maxScroll)
+    end)
+
+    ----------------------------------------------------------------------
+    -- DRAW LOOP (PreRender)
+    ----------------------------------------------------------------------
+    RunService.PreRender:Connect(function()
+        drawNotifs()
+        if not st.open then return end
+
+        local click = lmb and not lmbPrev
+        pendingDD = nil
+
+        local winH = st.minimized and TITLE_H or (TITLE_H + CONTENT_H)
+        if click and not pin(mx, my, WIN.x, WIN.y, WIN_W, winH) then
+            ddOpen = nil; kbListen = nil; boxFocus = nil
+        end
+
+        if click and pin(mx, my, WIN.x, WIN.y, WIN_W, TITLE_H) then
+            dragWin = true; dragOX = mx - WIN.x; dragOY = my - WIN.y
+        end
+        if dragWin and lmb then WIN.x = mx - dragOX; WIN.y = my - dragOY end
+
+        fill(WIN.x, WIN.y, WIN_W, winH, C.panel, 8)
+
+        -- content first (sidebar/title cover scroll overflow)
+        if not st.minimized then
+            local cx = WIN.x + SIDEBAR_W
+            local cy = WIN.y + TITLE_H
+            local cw = WIN_W - SIDEBAR_W
+            local vTop, vBot = cy, cy + CONTENT_H
+            local tab = tabs[st.activeTab]
+            if tab then
+                local y = cy + 6 - tab.scroll
+                for _, e in ipairs(tab.elems) do
+                    local eh = elemH(e)
+                    if y + eh <= vBot + 0.5 and y + eh >= vTop then
+                        drawElement(e, cx, y, cw, click)
+                    end
+                    y = y + eh
+                end
+                local total = (y + tab.scroll) - (cy + 6) + 10
+                tab.maxScroll = math.max(0, total - CONTENT_H)
+                if tab.maxScroll > 0 then
+                    local trackH = CONTENT_H - 8
+                    local thumbH = math.max(24, trackH * (CONTENT_H / total))
+                    local tpos   = (tab.scroll / tab.maxScroll) * (trackH - thumbH)
+                    fill(WIN.x + WIN_W - 4, cy + 4 + tpos, 2, thumbH, C.accent, 1)
+                end
+            end
+        end
+
+        -- sidebar
+        if not st.minimized then
+            local sbX, sbY = WIN.x, WIN.y + TITLE_H
+            fill(sbX, sbY, SIDEBAR_W, CONTENT_H, C.panel2, 0)
+            fill(sbX + SIDEBAR_W, sbY, 1, CONTENT_H, C.stroke, 0)
+            local ty = sbY + 8
+            for i, tab in ipairs(tabs) do
+                local bx, by, bw, bh = sbX + 8, ty + (i - 1) * (TAB_H + 2), SIDEBAR_W - 16, TAB_H
+                local act = (i == st.activeTab)
+                local hov = pin(mx, my, bx, by, bw, bh)
+                if act then fill(bx, by, bw, bh, C.accentDim, 5)
+                elseif hov then fill(bx, by, bw, bh, C.rowHov, 5) end
+                if act then fill(bx, by + bh / 2 - 7, 2, 14, C.accent, 1) end
+                icon(tab.icon, bx + 8, by + bh / 2 - 7, act and C.accent or C.dim)
+                txt(bx + 28, by + bh / 2 - 7, tab.name, act and C.white or C.dim, FD)
+                if click and hov then
+                    st.activeTab = i; ddOpen = nil; kbListen = nil; boxFocus = nil
+                end
+            end
+            if footer then
+                local fy = sbY + CONTENT_H - 14 * #footer - 6
+                for i, lineTxt in ipairs(footer) do
+                    txt(sbX + PAD, fy + (i - 1) * 14, tostring(lineTxt), C.mono, FD_S)
+                end
+            end
+        end
+
+        -- title bar
+        fill(WIN.x, WIN.y, WIN_W, TITLE_H, C.panel2, 8)
+        fill(WIN.x, WIN.y, 2, TITLE_H, C.accent, 0)
+        if not st.minimized then fill(WIN.x, WIN.y + TITLE_H - 1, WIN_W, 1, C.stroke, 0) end
+        do  -- diamond logo
+            local lx, ly = WIN.x + PAD, WIN.y + TITLE_H / 2
+            fill(lx, ly - 8, 16, 16, C.accent, 4)
+            line(lx + 8, ly - 5, lx + 12, ly, C.black, 1.6); line(lx + 12, ly, lx + 8, ly + 5, C.black, 1.6)
+            line(lx + 8, ly + 5, lx + 4, ly, C.black, 1.6);  line(lx + 4, ly, lx + 8, ly - 5, C.black, 1.6)
+        end
+        local tx = WIN.x + PAD + 24
+        local titleStr = opts.title or "Jael"
+        txt(tx, WIN.y + TITLE_H / 2 - 8, titleStr, C.white, FD_T)
+        local tw = measure(titleStr .. " ", FD_T)
+        local subStr = opts.sub or "Library"
+        if subStr ~= "" then
+            txt(tx + tw, WIN.y + TITLE_H / 2 - 8, subStr, C.accent, FD_T)
+            tw = tw + measure(subStr .. " ", FD_T)
+        end
+        if opts.version then
+            txt(tx + tw + 2, WIN.y + TITLE_H / 2 - 6, opts.version, C.dim, FD_S)
+        end
+        do  -- minimize / restore
+            local bs = 18
+            local bx, by = WIN.x + WIN_W - PAD - bs, WIN.y + TITLE_H / 2 - bs / 2
+            local hov = pin(mx, my, bx, by, bs, bs)
+            fill(bx, by, bs, bs, hov and C.rowHov or C.panel, 4)
+            ctxt(bx + bs / 2, by + bs / 2 - 7, st.minimized and "+" or "—", C.text, FD)
+            if click and hov then st.minimized = not st.minimized end
+        end
+
+        stroke(WIN.x, WIN.y, WIN_W, winH, C.stroke, 8)
+        if pendingDD then drawDropdown(pendingDD, click) end
+    end)
+
+    return Win
+end
+
+return Library
