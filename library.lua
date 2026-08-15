@@ -131,16 +131,51 @@ function Library:NewWindow(hubName, gameName, version, discord)
 	TooltipLabel.Font = Enum.Font.Gotham; TooltipLabel.Text = ""
 	TooltipLabel.TextColor3 = Color3.fromRGB(200, 200, 200); TooltipLabel.TextSize = 11
 	TooltipLabel.ZIndex = 201
+	-- Without wrapping a long tooltip becomes one enormous single line (measured 456px
+	-- for a normal sentence), so the text ends up far from the cursor even though the
+	-- box corner is right next to it. Cap the width and let it grow downwards instead.
+	TooltipLabel.TextWrapped = true
+	TooltipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	local _ttSC = Instance.new("UISizeConstraint")
+	_ttSC.MaxSize = Vector2.new(264, math.huge)
+	_ttSC.Parent = TooltipLabel
 
 	local _ttConn
+	-- Offset from the cursor hotspot. +2 tucked the corner under the arrow itself;
+	-- this clears it without drifting away.
+	local TT_OFF_X, TT_OFF_Y = 14, 18
+
+	local GuiService = game:GetService("GuiService")
+
+	local function positionTooltip()
+		-- GetMouseLocation() is measured from the very top of the screen, INCLUDING the
+		-- topbar, while GuiObject.Position inside a ScreenGui with IgnoreGuiInset = false
+		-- starts below it. Feeding the raw mouse Y straight into Position therefore drew
+		-- the tooltip a full inset (58px here) below the cursor. Convert first.
+		-- Verified: an element occupying AbsolutePosition Y 406..438 reports MouseMoved
+		-- y = 466, exactly +58.
+		local inset = GuiService:GetGuiInset()
+		local mp = UserInputService:GetMouseLocation() - inset
+		local cam = workspace.CurrentCamera
+		local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+		local size = Tooltip.AbsoluteSize
+		local x, y = mp.X + TT_OFF_X, mp.Y + TT_OFF_Y
+		-- Flip to the other side instead of spilling off screen. mp and ViewportSize are
+		-- now in the same space, so they compare directly.
+		if x + size.X > vp.X - 4 then x = math.max(4, mp.X - size.X - 4) end
+		if y + size.Y > vp.Y - 4 then y = math.max(4, mp.Y - size.Y - 6) end
+		Tooltip.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
+	end
+
 	local function showTooltip(text)
 		TooltipLabel.Text = text
+		-- Place it BEFORE showing it. Setting Visible first made the tooltip render
+		-- one frame at wherever the previous tooltip died, which reads as it popping
+		-- up far away from the cursor and then snapping back.
+		positionTooltip()
 		Tooltip.Visible = true
 		if _ttConn then _ttConn:Disconnect() end
-		_ttConn = RunService.RenderStepped:Connect(function()
-			local mp = UserInputService:GetMouseLocation()
-			Tooltip.Position = UDim2.new(0, mp.X + 2, 0, mp.Y + 2)
-		end)
+		_ttConn = RunService.RenderStepped:Connect(positionTooltip)
 	end
 	local function hideTooltip()
 		Tooltip.Visible = false
@@ -611,10 +646,29 @@ function Library:NewWindow(hubName, gameName, version, discord)
 		FullScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		FullScroll.ZIndex = 2
 
+		-- FullScroll sits at the same origin as LeftScroll but is twice as wide and
+		-- one ZIndex higher, so while it is empty it is an invisible sheet lying on
+		-- top of both columns and it swallows the mouse wheel: neither Left nor Right
+		-- would scroll. Keep it out of the way until something is actually put in it.
+		FullScroll.Visible = false
+
 		local FullLayout = Instance.new("UIListLayout")
 		FullLayout.Parent = FullScroll
 		FullLayout.Padding = UDim.new(0, 6)
 		FullLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+		local function refreshFullVisibility()
+			for _, child in ipairs(FullScroll:GetChildren()) do
+				if child:IsA("GuiObject") then
+					FullScroll.Visible = true
+					return
+				end
+			end
+			FullScroll.Visible = false
+		end
+		-- covers Tab:NewSection("...", "full") and anything parented to Tab.Full directly
+		FullScroll.ChildAdded:Connect(refreshFullVisibility)
+		FullScroll.ChildRemoved:Connect(refreshFullVisibility)
 
 		-- Connect Tab Switch
 		TabBtn.MouseButton1Click:Connect(function()
